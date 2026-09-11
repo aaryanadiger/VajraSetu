@@ -1,0 +1,29 @@
+# Vajra Setu first-time setup requirements
+#
+# This is an Expo / React Native project. Dependencies are installed from
+# package.json with npm; this file documents the tools needed on a new machine.
+
+# Required tools
+# - Node.js 22.x
+# - npm (included with Node.js)
+# - Git
+# - Android Studio with Android SDK 36 for Android builds, or Xcode 26.4+ for iOS
+
+# Install dependencies
+# npm install
+
+# Start the UI in Expo Go (camera permission and navigation only)
+# npx expo start
+
+# Run the real wristband scanner. The scanner uses react-native-fast-opencv,
+# which is a native module and cannot run inside Expo Go.
+# npx expo run:android
+# npx expo run:ios
+
+# Environment variables
+# Create .env in the project root and add:
+# EXPO_PUBLIC_SARVAM_API_KEY=your_sarvam_ai_api_key
+
+# Useful verification commands
+# npx tsc --noEmit
+# npx expo export --platform android --output-dir /tmp/vajrasetu-export

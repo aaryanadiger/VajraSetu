@@ -28,18 +28,18 @@ import {
   getSettings,
   saveReading,
 } from '../services/db';
-import { extractRegionsFromImage } from '../services/imageProcessing';
+import { CaptureError, extractRegionsFromImage } from '../services/imageProcessing';
 import { runExposurePipeline } from '../services/exposure';
 import { AppSettings, ProcessingResult, RiskBand } from '../types';
 import { AppLanguage, translateUi } from '../services/translation';
 
-type Step = 'camera' | 'processing' | 'result';
+type Step = 'camera' | 'processing' | 'result' | 'unreadable';
 
 const PIPELINE_STAGES = [
-  'Aligning the image',
-  'Reading the colour patches',
-  'Checking the wristband',
-  'Calculating exposure',
+  'Checking the card position',
+  'Reading the expiry indicator',
+  'Reading the H₂S indicator',
+  'Categorising the colour change',
   'Preparing your result',
 ];
 
@@ -71,6 +71,7 @@ export const CaptureFlowScreen: React.FC = () => {
   const [result, setResult] = useState<ProcessingResult | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  const [captureProblem, setCaptureProblem] = useState('');
   const cameraRef = useRef<CameraView>(null);
   const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
     const local = translateUi(key, language, fallback);
@@ -92,23 +93,30 @@ export const CaptureFlowScreen: React.FC = () => {
     setStageIndex(0);
 
     let imageUri = '';
+    let processed: ProcessingResult;
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.9 });
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.85, base64: true, exif: false });
       imageUri = photo?.uri ?? '';
-    } catch {
-      // The image service has a deterministic demo fallback when no URI is available.
-    }
 
-    let progressIndex = 0;
-    for (const _stage of PIPELINE_STAGES) {
-      setStageIndex(progressIndex);
-      await pause(100);
-      progressIndex += 1;
-    }
+      let progressIndex = 0;
+      for (const _stage of PIPELINE_STAGES) {
+        setStageIndex(progressIndex);
+        await pause(100);
+        progressIndex += 1;
+      }
 
-    const regions = await extractRegionsFromImage(imageUri);
-    const processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS, settings);
-    setResult(processed);
+      const regions = await extractRegionsFromImage(photo?.base64 ?? '');
+      processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS, settings);
+      setResult(processed);
+    } catch (error) {
+      const message = error instanceof CaptureError
+        ? error.message
+        : 'We could not read the two indicators. Centre the small card and try again.';
+      setCaptureProblem(message);
+      setStep('unreadable');
+      setCapturing(false);
+      return;
+    }
 
     try {
       const profile = await getAccountProfile();
@@ -153,6 +161,7 @@ export const CaptureFlowScreen: React.FC = () => {
     setStageIndex(0);
     setCameraReady(false);
     setCapturing(false);
+    setCaptureProblem('');
   }
 
   if (step === 'camera') {
@@ -185,8 +194,8 @@ export const CaptureFlowScreen: React.FC = () => {
           </View>
 
           <View style={styles.instructionCard}>
-            <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the wristband in the frame')}</Text>
-            <Text style={styles.instructionBody}>{tx('keepSteady', 'Keep the phone steady. Use the light if the patches look dark.')}</Text>
+            <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the small indicator card in the frame')}</Text>
+            <Text style={styles.instructionBody}>{tx('keepSteady', 'Match the yellow circle and blue square to the guides. Keep the phone steady.')}</Text>
           </View>
 
           <View style={styles.cameraBottom}>
@@ -213,10 +222,25 @@ export const CaptureFlowScreen: React.FC = () => {
     );
   }
 
+  if (step === 'unreadable') {
+    return <UnreadableStep message={captureProblem} onRescan={reset} onDone={() => navigation.goBack()} />;
+  }
+
   if (!result) return null;
 
   return <ResultStep result={result} settings={settings} language={language} onRescan={reset} onDone={() => navigation.navigate('Home')} onHistory={() => navigation.navigate('History')} />;
 };
+
+const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: () => void }> = ({ message, onRescan, onDone }) => (
+  <SafeAreaView style={styles.permissionScreen}>
+    <View style={[styles.permissionIcon, { backgroundColor: '#FFF4DB' }]}><Ionicons name="scan-outline" size={34} color={theme.colors.semantic.warning} /></View>
+    <Text style={styles.permissionTitle}>Try that scan again</Text>
+    <Text style={styles.permissionBody}>{message}</Text>
+    <Text style={styles.retryTip}>Use even light. Centre only the small card, with the yellow circle in the upper-right guide and the blue square in the lower-left guide.</Text>
+    <Button label="Scan again" onPress={onRescan} style={styles.permissionButton} />
+    <Button label="Cancel" variant="outline" onPress={onDone} style={styles.cancelButton} />
+  </SafeAreaView>
+);
 
 const PermissionStep: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const { language } = useLanguage();
@@ -284,6 +308,11 @@ const ResultStep: React.FC<{
         <Text style={styles.resultHeading}>{copy.title}</Text>
         <Text style={styles.resultBody}>{copy.body}</Text>
 
+        <View style={styles.prototypeNote}>
+          <Ionicons name="information-circle-outline" size={18} color={theme.colors.text.secondary} />
+          <Text style={styles.prototypeNoteText}>Colour category: {result.colour_category.toUpperCase()}. ppm values are estimates until the band is calibrated with controlled H₂S samples.</Text>
+        </View>
+
         <Card style={styles.resultCard}>
           <Text style={styles.detailLabel}>{tx('latestExposure', 'Your latest reading')}</Text>
           <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.twa_ppm.toFixed(2)}</Text><Text style={styles.bigUnit}>ppm TWA</Text></View>
@@ -324,6 +353,8 @@ const styles = StyleSheet.create({
   permissionTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary, textAlign: 'center' },
   permissionBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, maxWidth: 320 },
   permissionButton: { width: '100%', marginTop: theme.spacing.xl },
+  cancelButton: { width: '100%', marginTop: theme.spacing.md },
+  retryTip: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.sm, lineHeight: 20, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.lg, maxWidth: 330 },
   processingIcon: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.xl },
   processingTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary },
   processingBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary, marginTop: theme.spacing.sm },
@@ -339,6 +370,8 @@ const styles = StyleSheet.create({
   resultBadge: { marginBottom: theme.spacing.md },
   resultHeading: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xxl, color: theme.colors.text.primary, textAlign: 'center' },
   resultBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, marginBottom: theme.spacing.xl, maxWidth: 340 },
+  prototypeNote: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#EEF5FF', borderRadius: 14, padding: theme.spacing.md, marginBottom: theme.spacing.lg },
+  prototypeNoteText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, color: theme.colors.text.secondary },
   resultCard: { width: '100%', marginHorizontal: 0, borderRadius: 20, marginBottom: theme.spacing.lg },
   detailLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary },
   detailText: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.primary, marginTop: theme.spacing.sm },

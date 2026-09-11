@@ -129,6 +129,8 @@ export interface ProcessingResult {
   band_valid: boolean;
   expiry_delta_e: number;
   sensing_delta_e: number;
+  /** A rules-based colour category, separate from a lab-calibrated ppm value. */
+  colour_category: 'low' | 'elevated' | 'high';
   cumulative_ppm_hr: number;
   twa_ppm: number;
   h2s_index: number;

@@ -20,6 +20,20 @@ export interface CaptureRegions {
   referenceRGB: RGB;
 }
 
+export type CaptureProblem =
+  | 'native_scanner_unavailable'
+  | 'missing_image'
+  | 'card_not_in_frame'
+  | 'poor_lighting';
+
+/** A recoverable scan problem that the UI can turn into a simple retry tip. */
+export class CaptureError extends Error {
+  constructor(public readonly problem: CaptureProblem, message: string) {
+    super(message);
+    this.name = 'CaptureError';
+  }
+}
+
 // ─── sRGB → CIELAB ────────────────────────────────────────────────────────────
 
 function linearize(c: number): number {
@@ -134,65 +148,148 @@ export function computeDeltaE(targetRGB: RGB, referenceRGB: RGB): number {
   return ciede2000(rgbToLab(targetRGB), rgbToLab(referenceRGB));
 }
 
-// ─── Region extraction (demo mode / real mode) ────────────────────────────────
+// ─── Region extraction ──────────────────────────────────────────────────────
 
 /**
- * In Expo Go or environments without react-native-fast-opencv native module,
- * returns a simulated result so the full UI flow can be demonstrated.
+ * Reads the fixed indicator locations from a centred indicator card.
  *
- * In a development build with OpenCV, this would:
- *  1. Run perspective correction using the printed reference-scale corners
- *  2. Crop the three regions (sensing, expiry dot, reference white patch)
- *  3. Average the RGB pixels in each region
- *  4. Return the CaptureRegions struct
+ * The camera overlay makes the physical card's position repeatable, which is
+ * more dependable than trying to learn a wristband shape from an unlabelled
+ * image set. OpenCV decodes the JPEG; the sampling stays deterministic and
+ * auditable TypeScript.
  */
-export async function extractRegionsFromImage(imageUri: string): Promise<CaptureRegions> {
+export async function extractRegionsFromImage(imageBase64: string): Promise<CaptureRegions> {
   const isExpoGo = isRunningInExpoGo();
 
-  if (isExpoGo || !imageUri) {
-    // Demo mode: return a plausible mid-exposure simulation
-    return simulatedCapture();
+  if (!imageBase64) {
+    throw new CaptureError('missing_image', 'No image was captured. Try again.');
+  }
+
+  if (isExpoGo) {
+    // Expo Go cannot load react-native-fast-opencv. A simulated safety result
+    // would be misleading, so scanning is intentionally unavailable there.
+    throw new CaptureError(
+      'native_scanner_unavailable',
+      'Use the Vajra Setu development build to read a wristband.'
+    );
   }
 
   try {
-    // Real processing path — requires react-native-fast-opencv dev build
-    const { OpenCV } = await import('react-native-fast-opencv');
-    return await _realExtractRegions(OpenCV, imageUri);
-  } catch {
-    console.warn('[imageProcessing] OpenCV not available, using demo mode');
-    return simulatedCapture();
+    const { Mat } = await import('react-native-fast-opencv');
+    const image = Mat.createFromBase64(imageBase64);
+    try {
+      return extractCentredIndicatorRegions(image.toBuffer('uint8'));
+    } finally {
+      image.release();
+    }
+  } catch (error) {
+    if (error instanceof CaptureError) throw error;
+    console.warn('[imageProcessing] Could not read image', error);
+    throw new CaptureError(
+      'native_scanner_unavailable',
+      'The scanner is not ready on this phone. Open the development build and try again.'
+    );
   }
 }
 
-function simulatedCapture(): CaptureRegions {
-  // Provisional unexposed CuSO4 baseline from the supplied sample photograph.
-  // Real values are supplied by the native OpenCV extraction path.
+interface DecodedImage {
+  cols: number;
+  rows: number;
+  channels: number;
+  buffer: Uint8Array;
+}
+
+interface RelativeRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  circle?: boolean;
+}
+
+// These zones match the supplied band holder when the small indicator card is
+// aligned with the square camera frame. The FeSO4 dot sits upper-right, the
+// CuSO4 pad sits lower-left, and plain white card is sampled upper-left.
+const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
+  reference: { x: 0.14, y: 0.16, width: 0.18, height: 0.18 },
+  expiry: { x: 0.55, y: 0.17, width: 0.30, height: 0.30, circle: true },
+  sensing: { x: 0.10, y: 0.56, width: 0.30, height: 0.30 },
+};
+
+function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
+  if (image.channels < 3 || image.cols < 180 || image.rows < 180) {
+    throw new CaptureError('card_not_in_frame', 'Move the indicator card closer and keep it inside the frame.');
+  }
+
+  // Sampling only the centre prevents the paper strap, hand and work surface
+  // from changing the colour measurement.
+  const side = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
+  const card = {
+    left: Math.round((image.cols - side) / 2),
+    top: Math.round((image.rows - side) / 2),
+    side,
+  };
+
+  const referenceRGB = sampleRegion(image, card, INDICATOR_ZONES.reference);
+  const expiryRGB = sampleRegion(image, card, INDICATOR_ZONES.expiry);
+  const sensingRGB = sampleRegion(image, card, INDICATOR_ZONES.sensing);
+
+  const referenceBrightness = (referenceRGB.r + referenceRGB.g + referenceRGB.b) / 3;
+  if (referenceBrightness < 110 || referenceBrightness > 252) {
+    throw new CaptureError('poor_lighting', 'Use even light and keep the white part of the card visible.');
+  }
+  if (channelDistance(expiryRGB, referenceRGB) < 14 || channelDistance(sensingRGB, referenceRGB) < 14) {
+    throw new CaptureError('card_not_in_frame', 'Centre the small card so both coloured indicators are inside the frame.');
+  }
+
   return {
-    referenceRGB: { r: 245, g: 245, b: 245 },
-    expiryRGB: { r: 0, g: 0, b: 0 },
-    sensingRGB: { r: 174, g: 190, b: 181 },
+    referenceRGB,
+    expiryRGB,
+    sensingRGB,
   };
 }
 
-async function _realExtractRegions(OpenCV: any, imageUri: string): Promise<CaptureRegions> {
-  // Perspective correction + region sampling using react-native-fast-opencv
-  // This is a structural stub — implement with the team's OpenCV pipeline
-  const mat = await OpenCV.imageRgbaToMat({ uri: imageUri });
-  
-  // 1. Detect reference scale corners for perspective transform
-  // 2. Apply getPerspectiveTransform + warpPerspective
-  // 3. Crop regions by fixed relative coordinates on the corrected image
-  // 4. Average pixel values in each region
+function sampleRegion(image: DecodedImage, card: { left: number; top: number; side: number }, region: RelativeRegion): RGB {
+  const left = card.left + Math.round(region.x * card.side);
+  const top = card.top + Math.round(region.y * card.side);
+  const width = Math.max(8, Math.round(region.width * card.side));
+  const height = Math.max(8, Math.round(region.height * card.side));
+  const red: number[] = [];
+  const green: number[] = [];
+  const blue: number[] = [];
 
-  // Placeholder: sample entire image average as a fallback
-  const avgRGB = await OpenCV.getMatMean(mat);
-  await OpenCV.clearBuffers();
+  // A small grid gives a robust value without processing every photo pixel.
+  for (let row = 1; row < 24; row += 1) {
+    for (let column = 1; column < 24; column += 1) {
+      const nx = column / 24;
+      const ny = row / 24;
+      if (region.circle && Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.5, 2) > 0.18) continue;
+      const x = clamp(Math.round(left + nx * width), 0, image.cols - 1);
+      const y = clamp(Math.round(top + ny * height), 0, image.rows - 1);
+      const index = (y * image.cols + x) * image.channels;
+      // Mat.createFromBase64 follows OpenCV's decoded BGR channel order.
+      blue.push(image.buffer[index]);
+      green.push(image.buffer[index + 1]);
+      red.push(image.buffer[index + 2]);
+    }
+  }
 
-  return {
-    referenceRGB: { r: 240, g: 248, b: 255 },
-    expiryRGB:   { r: avgRGB.r * 0.95, g: avgRGB.g * 0.93, b: avgRGB.b * 0.80 },
-    sensingRGB:  { r: avgRGB.r, g: avgRGB.g, b: avgRGB.b },
-  };
+  return { r: trimmedMean(red), g: trimmedMean(green), b: trimmedMean(blue) };
+}
+
+function trimmedMean(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const trim = Math.floor(sorted.length * 0.15);
+  const kept = sorted.slice(trim, sorted.length - trim);
+  return Math.round(kept.reduce((total, value) => total + value, 0) / kept.length);
+}
+
+function channelDistance(a: RGB, b: RGB): number {
+  return Math.sqrt(Math.pow(a.r - b.r, 2) + Math.pow(a.g - b.g, 2) + Math.pow(a.b - b.b, 2));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function isRunningInExpoGo(): boolean {

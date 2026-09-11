@@ -12,12 +12,17 @@
 
 import { AppSettings } from '../types';
 import { ProcessingResult, RiskBand, H2SIndex } from '../types';
-import { isBandValid, deltaEToPpmHr, getSaturationDeltaE } from './calibration';
+import { deltaEToPpmHr, getSaturationDeltaE } from './calibration';
 import { computeDeltaE, CaptureRegions, RGB } from './imageProcessing';
 
 // Provisional CuSO4 baseline sampled from the supplied unexposed pad photograph.
 // Replace this with lab-measured values once controlled exposure samples exist.
 const CUSO4_UNEXPOSED_RGB: RGB = { r: 174, g: 190, b: 181 };
+// Provisional fresh FeSO4 reference sampled from the supplied band photograph.
+// Replace this and the threshold with controlled expiry samples before treating
+// this as a safety decision.
+const FESO4_FRESH_RGB: RGB = { r: 201, g: 168, b: 55 };
+const FE_SO4_VALID_MAX_DELTA_E = 18;
 const TARGET_WHITE_RGB: RGB = { r: 245, g: 245, b: 245 };
 
 function clampChannel(value: number): number {
@@ -35,8 +40,25 @@ function whiteBalance(sample: RGB, capturedWhite: RGB): RGB {
 
 // ─── Band validity gate (Step A) ─────────────────────────────────────────────
 
-export function validateBand(expiryDeltaE: number, curveVersion = 'v1'): boolean {
-  return isBandValid(expiryDeltaE, curveVersion);
+export function validateBand(expiryDeltaE: number): boolean {
+  // Keep the expiry gate explicit so it cannot be silently bypassed in a
+  // future refactor. FE_SO4_VALID_MAX_DELTA_E is provisional until lab work.
+  return Number.isFinite(expiryDeltaE)
+    && expiryDeltaE >= 0
+    && expiryDeltaE <= FE_SO4_VALID_MAX_DELTA_E;
+}
+
+/**
+ * CuSO4 changes blue/green → brown → black. These are deterministic colour
+ * bands—not a trained model and not a concentration measurement.
+ */
+function classifyCuSO4Colour(sensingRGB: RGB, sensingDeltaE: number): ProcessingResult['colour_category'] {
+  const brightness = (sensingRGB.r + sensingRGB.g + sensingRGB.b) / 3;
+  const redDominant = sensingRGB.r > sensingRGB.b + 8;
+
+  if (brightness < 72 || sensingDeltaE >= 46) return 'high';
+  if (redDominant || sensingDeltaE >= 22) return 'elevated';
+  return 'low';
 }
 
 // ─── TWA computation (Step B1) ────────────────────────────────────────────────
@@ -151,12 +173,13 @@ export async function runExposurePipeline(
   settings: AppSettings,
   curveVersion = 'v1'
 ): Promise<ProcessingResult> {
-  // FeSO4 validity is intentionally disabled for this CuSO4-only prototype.
-  // The white reference corrects lighting; the CuSO4 pad is compared to its
-  // own unexposed pale blue/green baseline to measure H2S colour change.
-  const expiryDeltaE = 0;
+  // Both indicators are corrected against the same white card area so warm
+  // factory lighting does not look like a chemical colour change.
+  const correctedExpiry = whiteBalance(regions.expiryRGB, regions.referenceRGB);
   const correctedSensing = whiteBalance(regions.sensingRGB, regions.referenceRGB);
+  const expiryDeltaE = computeDeltaE(correctedExpiry, FESO4_FRESH_RGB);
   const sensingDeltaE = computeDeltaE(correctedSensing, CUSO4_UNEXPOSED_RGB);
+  const bandValid = validateBand(expiryDeltaE);
 
   // Step B1: TWA
   const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);
@@ -165,12 +188,16 @@ export async function runExposurePipeline(
   const h2sIndex = computeH2SIndex(twa.twaPpm, shiftHours, settings);
 
   // Risk classification
-  const riskBand = classifyRisk(twa, h2sIndex, settings);
+  const colourCategory = classifyCuSO4Colour(correctedSensing, sensingDeltaE);
+  const riskBand = colourCategory === 'high' || twa.isSaturated
+    ? 'high'
+    : colourCategory === 'elevated' ? 'elevated' : 'low';
 
   return {
-    band_valid: true,
+    band_valid: bandValid,
     expiry_delta_e: expiryDeltaE,
     sensing_delta_e: sensingDeltaE,
+    colour_category: colourCategory,
     cumulative_ppm_hr: parseFloat(twa.cumulativePpmHr.toFixed(2)),
     twa_ppm: parseFloat(twa.twaPpm.toFixed(3)),
     h2s_index: h2sIndex.value,
