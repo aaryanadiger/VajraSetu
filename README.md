@@ -1,4 +1,4 @@
-# VarjraSetu
+# VajraSetu
 
 Vajra सेतु is an edge-computing occupational safety and exposure monitoring platform. It pairs low-cost colorimetric chemical sensor wristbands with mobile computer vision to measure cumulative toxic gas exposure (specifically Hydrogen Sulfide, H2S) for sanitation, sewer, and industrial workers.
 
