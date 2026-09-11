@@ -31,12 +31,13 @@ export const Button: React.FC<ButtonProps> = ({ label, variant = 'primary', icon
 
 const styles = StyleSheet.create({
   button: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.radii.btn,
+    minHeight: 52,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    borderRadius: 16,
     gap: theme.spacing.md,
   },
   primary: {

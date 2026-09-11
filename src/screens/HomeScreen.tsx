@@ -1,320 +1,162 @@
-/**
- * HomeScreen — PRD §3
- * - Header: greeting + current risk band badge
- * - Primary: Exposure graph (cumulative TWA area chart, 7/30 day toggle, TWA/Index toggle)
- * - Tap point → bottom sheet with shift detail
- * - Secondary: "Scan now" CTA
- * - Empty state when no readings exist
- * All animations via react-native-reanimated; strings via i18next.
- */
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  RefreshControl, Modal, Pressable, Image,
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Animated, {
-  FadeInDown, FadeIn, useSharedValue, useAnimatedStyle,
-  withSpring, withTiming, interpolate, Extrapolation,
-} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../navigation/RootNavigator';
 import { theme } from '../theme';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
-import { Button } from '../components/ui/Button';
-import { ExposureLineChart } from '../components/ExposureLineChart';
-import { getReadingsForGraph, getSettings, getProfile } from '../services/db';
-import { Reading, AppSettings, RiskBand, WorkerProfile } from '../types';
+import { getAllReadingsToday, getSettings } from '../services/db';
+import { AppSettings, Reading, RiskBand } from '../types';
+import { AppLanguage, LANGUAGE_OPTIONS, isSarvamConfigured, translateUi } from '../services/translation';
 
-type ViewMode = 'twa' | 'index';
-type DayRange = 7 | 30;
-
-function getGreeting(name: string, t: (k: string) => string): string {
-  const h = new Date().getHours();
-  const key =
-    h >= 5 && h < 12 ? 'home.greeting_morning' :
-    h >= 12 && h < 17 ? 'home.greeting_afternoon' :
-    h >= 17 && h < 21 ? 'home.greeting_evening' :
-    'home.greeting_night';
-  return `${t(key)}, ${name.split(' ')[0]}`;
+function riskMeta(band: RiskBand) {
+  if (band === 'high') return { color: '#D92D20', icon: 'alert-circle' as const, label: 'HIGH' };
+  if (band === 'elevated') return { color: '#B54708', icon: 'warning' as const, label: 'ELEVATED' };
+  if (band === 'invalid') return { color: '#475467', icon: 'close-circle' as const, label: 'RESCAN' };
+  return { color: '#027A48', icon: 'checkmark-circle' as const, label: 'VALID' };
 }
 
-function riskToBadge(band: RiskBand): 'success' | 'warning' | 'danger' | 'neutral' {
-  return { low: 'success', elevated: 'warning', high: 'danger', invalid: 'neutral' }[band] as any ?? 'neutral';
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-  });
+function greeting(language: AppLanguage) {
+  const hour = new Date().getHours();
+  const period = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+  const values: Record<AppLanguage, Record<string, string>> = {
+    'bho-IN': { morning: 'सुप्रभात', afternoon: 'नमस्कार', evening: 'शुभ संध्या' },
+    'hi-IN': { morning: 'सुप्रभात', afternoon: 'नमस्कार', evening: 'शुभ संध्या' },
+    'mr-IN': { morning: 'शुभ सकाळ', afternoon: 'नमस्कार', evening: 'शुभ संध्याकाळ' },
+    'kn-IN': { morning: 'ಶುಭೋದಯ', afternoon: 'ನಮಸ್ಕಾರ', evening: 'ಶುಭ ಸಂಜೆ' },
+  };
+  return values[language][period];
 }
 
 export const HomeScreen: React.FC = () => {
-  const { t } = useTranslation();
   const navigation = useNavigation<any>();
+  const { language, setLanguage } = useLanguage();
   const [readings, setReadings] = useState<Reading[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [profile, setProfile] = useState<WorkerProfile | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [dayRange, setDayRange] = useState<DayRange>(7);
-  const [viewMode, setViewMode] = useState<ViewMode>('twa');
-  const [selectedReading, setSelectedReading] = useState<Reading | null>(null);
-  const [flashOnScan, setFlashOnScan] = useState(false);
-  const [guide, setGuide] = useState<'manual' | 'safety' | null>(null);
-  const sheetY = useSharedValue(0);
+  const [languageOpen, setLanguageOpen] = useState(false);
 
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
   const load = useCallback(async () => {
-    const [r, s, p] = await Promise.all([
-      getReadingsForGraph(30),
-      getSettings(),
-      getProfile(),
-    ]);
-    setReadings(r);
-    setSettings(s);
-    setProfile(p);
+    const [today, appSettings] = await Promise.all([getAllReadingsToday(), getSettings()]);
+    setReadings(today);
+    setSettings(appSettings);
+    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const onRefresh = useCallback(async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
   }, [load]);
 
-  const filtered = readings.filter(r => {
-    const cutoff = Date.now() - dayRange * 24 * 3600 * 1000;
-    return new Date(r.captured_at).getTime() >= cutoff;
-  });
-
-  const latest = readings.length > 0
-    ? readings.reduce((a, b) => new Date(a.captured_at) > new Date(b.captured_at) ? a : b)
-    : null;
-  const riskBand: RiskBand = latest?.band_valid ? (latest.risk_band as RiskBand) : 'low';
+  const latest = readings[0];
+  const band: RiskBand = latest?.band_valid ? latest.risk_band : latest ? 'invalid' : 'low';
+  const status = riskMeta(band);
   const oel = settings?.oel_twa_ppm ?? 5;
-  const todayExposure = latest?.cumulative_ppm_hr ?? 0;
-
-  const openScan = () => navigation.navigate('Scan', {
-    screen: 'CaptureMain',
-    params: { initialTorch: flashOnScan },
-  });
-
-  // Bottom sheet
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: withSpring(selectedReading ? 0 : 500, theme.motion.spring) }],
-    opacity: withTiming(selectedReading ? 1 : 0, { duration: theme.motion.fade.duration }),
-  }));
+  const exposure = latest?.band_valid ? latest.cumulative_ppm_hr : 0;
+  const progress = latest?.band_valid ? Math.min(1, latest.twa_ppm / oel) : 0;
+  const selectedLanguage = LANGUAGE_OPTIONS.find(item => item.code === language) ?? LANGUAGE_OPTIONS[0];
+  const openScan = () => navigation.navigate('Scan', { screen: 'CaptureMain' });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <LinearGradient
-        colors={theme.colors.gradient.background as any}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-      />
-
       <ScrollView
-        style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.primary} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#1677FF" />}
       >
-        {/* ── Header ── */}
-        <Animated.View entering={FadeInDown.duration(300)} style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.logoText}>{t('common.appName')}</Text>
-            <Text style={styles.greetingText}>
-              {getGreeting(profile?.full_name || 'Worker', t)}
-            </Text>
+        <View style={styles.header}>
+          <View>
+            <View style={styles.brandLockup}>
+              <Image source={require('../../assets/logo.png')} style={styles.logoMark} resizeMode="contain" />
+              <Text style={styles.wordmark}>Vajra सेतु</Text>
+            </View>
+            <Text style={styles.greeting}>{greeting(language)}</Text>
           </View>
-          {latest && (
-            <Animated.View entering={FadeIn.delay(200).duration(260)}>
-              <Badge
-                label={t(`riskBand.${riskBand}` as any)}
-                variant={riskToBadge(riskBand)}
-              />
-            </Animated.View>
-          )}
-        </Animated.View>
-
-        <Animated.View entering={FadeInDown.delay(40).duration(320)}>
-          <Card style={styles.exposureCard}>
-            <Text style={styles.exposureLabel}>Today’s Exposure</Text>
-            <View style={styles.exposureValueRow}>
-              <Text style={styles.exposureValue}>{todayExposure.toFixed(1)}</Text>
-              <Text style={styles.exposureUnit}>ppm·hr</Text>
-            </View>
-            <View style={styles.exposureTrack}>
-              <View style={[styles.exposureFill, { width: `${Math.min(100, (todayExposure / (oel * 8)) * 100)}%` }]} />
-            </View>
-            <View style={styles.exposureScale}>
-              <Text style={styles.exposureScaleText}>0</Text>
-              <Text style={styles.exposureScaleText}>Threshold: {(oel * 8).toFixed(0)} ppm·hr</Text>
-            </View>
-          </Card>
-        </Animated.View>
-
-        {/* ── Graph card ── */}
-        <Animated.View entering={FadeInDown.delay(80).duration(340)}>
-          <Card style={styles.graphCard}>
-            {/* Graph header row */}
-            <View style={styles.graphHeader}>
-              <Text style={styles.graphTitle}>{t('home.graphTitle')}</Text>
-              <Text style={styles.graphUnit}>ppm·hr</Text>
-            </View>
-
-            {/* Day range toggle */}
-            <View style={styles.toggleRow}>
-              <TogglePill
-                label={t('home.last7Days')}
-                active={dayRange === 7}
-                onPress={() => setDayRange(7)}
-              />
-              <TogglePill
-                label={t('home.last30Days')}
-                active={dayRange === 30}
-                onPress={() => setDayRange(30)}
-              />
-              <View style={styles.toggleSep} />
-              <TogglePill
-                label={t('home.twaView')}
-                active={viewMode === 'twa'}
-                onPress={() => setViewMode('twa')}
-              />
-              <TogglePill
-                label={t('home.indexView')}
-                active={viewMode === 'index'}
-                onPress={() => setViewMode('index')}
-              />
-            </View>
-
-            {/* Chart or empty state */}
-            {filtered.length === 0 ? (
-              <EmptyGraphState t={t} onScan={openScan} />
-            ) : (
-              <ExposureLineChart
-                readings={filtered}
-                oel={oel}
-                viewMode={viewMode}
-                onPressPoint={(r) => setSelectedReading(r)}
-              />
-            )}
-          </Card>
-        </Animated.View>
-
-        {/* ── Latest stats strip ── */}
-        {latest?.band_valid && (
-          <Animated.View entering={FadeInDown.delay(160).duration(300)}>
-            <Card style={styles.statsCard}>
-              <View style={styles.statsRow}>
-                <StatPill label="TWA" value={`${latest.twa_ppm.toFixed(2)} ppm`} />
-                <StatPill
-                  label="Cumulative"
-                  value={`${latest.cumulative_ppm_hr.toFixed(1)} ppm·hr`}
-                />
-                <StatPill label="H₂S Index" value={latest.h2s_index.toFixed(1)} />
-              </View>
-            </Card>
-          </Animated.View>
-        )}
-
-        {/* ── Scan CTA ── */}
-        <Animated.View entering={FadeInDown.delay(220).duration(300)}>
-          <TouchableOpacity style={styles.scanCTA} onPress={openScan} activeOpacity={0.85}>
-            <Ionicons name="scan" size={26} color={theme.colors.primary} />
-            <Text style={styles.scanCTAText}>{t('common.scanNow')}</Text>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.primary} />
-          </TouchableOpacity>
-        </Animated.View>
-
-        <View style={styles.flashRow}>
-          <Text style={styles.flashLabel}>Flash for scan</Text>
-          <TouchableOpacity
-            style={[styles.flashToggle, flashOnScan && styles.flashToggleActive]}
-            onPress={() => setFlashOnScan(value => !value)}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: flashOnScan }}
-            accessibilityLabel="Use flash when opening scanner"
-          >
-            <Ionicons name={flashOnScan ? 'flash' : 'flash-off'} size={17} color={flashOnScan ? '#fff' : theme.colors.text.secondary} />
-            <Text style={[styles.flashToggleText, flashOnScan && styles.flashToggleTextActive]}>{flashOnScan ? 'On' : 'Off'}</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity style={styles.iconControl} onPress={() => setLanguageOpen(true)} accessibilityRole="button" accessibilityLabel="Choose language">
+              <Ionicons name="language-outline" size={22} color="#344054" />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.accountBadge} onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel={tx('account', 'Account')}>
+              <Ionicons name="person" size={19} color="#fff" />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <Text style={styles.screenTitle}>{tx('safetyCheck', 'Your safety check')}</Text>
+
+        <View style={styles.exposureSurface}>
+          <View style={styles.surfaceHeader}>
+            <Text style={styles.surfaceLabel}>{tx('latestExposure', 'Latest recorded exposure')}</Text>
+            {latest && <View style={[styles.statusPill, { backgroundColor: `${status.color}14` }]}><Ionicons name={status.icon} size={14} color={status.color} /><Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text></View>}
+          </View>
+
+          {loading ? <ActivityIndicator color="#1677FF" style={styles.loader} /> : (
+            <>
+              <View style={styles.valueLine}>
+                <Text style={styles.exposureValue}>{exposure.toFixed(1)}</Text>
+                <Text style={styles.exposureUnit}>ppm·hr</Text>
+              </View>
+              <SegmentedMeter fraction={progress} color={status.color} />
+              <View style={styles.meterLabels}>
+                <Text style={styles.meterLabel}>0</Text>
+                <Text style={styles.meterLimit}>{tx('referenceLimit', 'Threshold')}: {oel} ppm TWA</Text>
+                <Text style={styles.meterLabel}>{oel}</Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        <View style={styles.utilityPanel}>
+          <UtilityRow icon="time-outline" title="Shift duration" value="8 hours" last />
+          <UtilityRow icon="hardware-chip-outline" title="Wristband status" value={latest?.band_valid ? status.label : 'Not scanned'} valueColor={latest ? status.color : undefined} />
+        </View>
+
+        <TouchableOpacity style={styles.primaryAction} onPress={openScan} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={tx('scanWristband', 'Scan wristband')}>
+          <View style={styles.primaryIcon}><Ionicons name="scan" size={22} color="#fff" /></View>
+          <View style={styles.primaryCopy}>
+            <Text style={styles.primaryTitle}>{tx('scanWristband', 'Scan wristband')}</Text>
+            <Text style={styles.primaryHint}>{tx('takesTenSeconds', 'Takes about 10 seconds')}</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={21} color="#fff" />
+        </TouchableOpacity>
 
         <View style={styles.quickActions}>
-          <QuickAction icon="document-text-outline" label="Wristband Manual" onPress={() => setGuide('manual')} />
-          <QuickAction icon="book-outline" label="Safety Guidelines" onPress={() => setGuide('safety')} />
+          <QuickAction icon="document-text-outline" label="Wristband manual" onPress={() => navigation.navigate('History')} />
+          <QuickAction icon="shield-checkmark-outline" label="Safety guide" onPress={() => navigation.navigate('History')} />
         </View>
 
-        <View style={{ height: 100 }} />
+        <Text style={styles.footerNote}>{tx('scanAfterShift', 'Scan your wristband after your shift or when your supervisor asks.')}</Text>
+        <View style={{ height: 92 }} />
       </ScrollView>
 
-      {/* ── Bottom sheet: shift detail ── */}
-      {selectedReading && (
-        <Pressable
-          style={styles.sheetBackdrop}
-          onPress={() => setSelectedReading(null)}
-        >
-          <Animated.View style={[styles.sheet, sheetStyle]}>
-            <Pressable onPress={() => {/* prevent backdrop close on inner press */}}>
-              <View style={styles.sheetHandle} />
-              <Text style={styles.sheetTitle}>{t('home.shiftDetail')}</Text>
-
-              <View style={styles.sheetRow}>
-                <Text style={styles.sheetLabel}>{formatDate(selectedReading.captured_at)}</Text>
-                <Text style={styles.sheetSub}>{formatTime(selectedReading.captured_at)}</Text>
-              </View>
-
-              <View style={styles.sheetMetrics}>
-                <SheetMetric label="TWA" value={`${selectedReading.twa_ppm.toFixed(3)} ppm`} />
-                <SheetMetric label="Cumul." value={`${selectedReading.cumulative_ppm_hr.toFixed(1)} ppm·hr`} />
-                <SheetMetric label="H₂S Index" value={selectedReading.h2s_index.toFixed(1)} />
-                <SheetMetric label="ΔE" value={selectedReading.sensing_delta_e.toFixed(2)} />
-              </View>
-
-              <View style={styles.sheetBadgeRow}>
-                <Badge
-                  label={t(`riskBand.${selectedReading.risk_band}` as any)}
-                  variant={riskToBadge(selectedReading.risk_band as RiskBand)}
-                />
-                <Text style={styles.sheetCalib}>
-                  cal: {selectedReading.calibration_curve_version}
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.sheetClose}
-                onPress={() => setSelectedReading(null)}
-              >
-                <Text style={styles.sheetCloseText}>{t('home.closeSheet')}</Text>
-              </TouchableOpacity>
-            </Pressable>
-          </Animated.View>
-        </Pressable>
-      )}
-
-      <Modal visible={guide !== null} transparent animationType="slide" onRequestClose={() => setGuide(null)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setGuide(null)}>
-          <Pressable style={styles.guideModal} onPress={() => undefined}>
+      <Modal visible={languageOpen} transparent animationType="slide" onRequestClose={() => setLanguageOpen(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setLanguageOpen(false)}>
+          <Pressable style={styles.languageSheet} onPress={() => undefined}>
             <View style={styles.sheetHandle} />
-            <View style={styles.guideHeader}>
-              <Ionicons name={guide === 'manual' ? 'document-text-outline' : 'shield-checkmark-outline'} size={24} color={theme.colors.primary} />
-              <Text style={styles.guideTitle}>{guide === 'manual' ? 'Wristband Manual' : 'H₂S Safety Guidelines'}</Text>
-            </View>
-            {guide === 'manual' ? <ManualContent /> : <SafetyContent />}
-            <TouchableOpacity style={styles.guideClose} onPress={() => setGuide(null)}><Text style={styles.guideCloseText}>Done</Text></TouchableOpacity>
+            <Text style={styles.sheetTitle}>{tx('chooseLanguage', 'Choose language')}</Text>
+            <Text style={styles.sheetNote}>{isSarvamConfigured() ? tx('sarvamReady', 'Sarvam AI translation available') : tx('languageOffline', 'Language is available offline')}</Text>
+            {LANGUAGE_OPTIONS.map(option => (
+              <TouchableOpacity key={option.code} style={[styles.languageOption, option.code === language && styles.languageOptionActive]} onPress={() => { setLanguage(option.code); setLanguageOpen(false); }} accessibilityRole="radio" accessibilityState={{ selected: option.code === language }}>
+                <View><Text style={styles.languageNative}>{option.nativeLabel}</Text><Text style={styles.languageEnglish}>{option.label}</Text></View>
+                {option.code === language && <Ionicons name="checkmark" size={21} color="#1677FF" />}
+              </TouchableOpacity>
+            ))}
           </Pressable>
         </Pressable>
       </Modal>
@@ -322,304 +164,76 @@ export const HomeScreen: React.FC = () => {
   );
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+const SegmentedMeter: React.FC<{ fraction: number; color: string }> = ({ fraction, color }) => {
+  const filled = Math.max(0, Math.round(fraction * 24));
+  return <View style={styles.meter}>{Array.from({ length: 24 }, (_, index) => <View key={index} style={[styles.segment, index < filled && { backgroundColor: color }, index === 12 && styles.thresholdSegment]} />)}</View>;
+};
 
-const TogglePill: React.FC<{ label: string; active: boolean; onPress: () => void }> = ({
-  label, active, onPress,
-}) => (
-  <TouchableOpacity
-    style={[styles.pill, active && styles.pillActive]}
-    onPress={onPress}
-    activeOpacity={0.75}
-  >
-    <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
-  </TouchableOpacity>
-);
-
-const StatPill: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.statPill}>
-    <Text style={styles.statPillVal}>{value}</Text>
-    <Text style={styles.statPillLabel}>{label}</Text>
+const UtilityRow: React.FC<{ icon: keyof typeof Ionicons.glyphMap; title: string; value: string; valueColor?: string; last?: boolean }> = ({ icon, title, value, valueColor, last }) => (
+  <View style={[styles.utilityRow, last && styles.utilityRowLast]}>
+    <View style={styles.utilityIcon}><Ionicons name={icon} size={20} color="#344054" /></View>
+    <Text style={styles.utilityTitle}>{title}</Text>
+    <Text style={[styles.utilityValue, valueColor && { color: valueColor }]}>{value}</Text>
+    <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
   </View>
 );
 
 const QuickAction: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }> = ({ icon, label, onPress }) => (
-  <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8}>
-    <Ionicons name={icon} size={30} color={theme.colors.text.primary} />
+  <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8} accessibilityRole="button">
+    <Ionicons name={icon} size={23} color="#1677FF" />
     <Text style={styles.quickActionText}>{label}</Text>
   </TouchableOpacity>
 );
 
-const ManualContent = () => (
-  <View style={styles.guideContent}>
-    <Text style={styles.guideText}>1. Check that the band is clean, dry, valid, and within its stated expiry date.</Text>
-    <Text style={styles.guideText}>2. Place the full colour area inside the scanner frame in even light. Keep your hand steady until capture completes.</Text>
-    <Text style={styles.guideText}>3. Review the result and rescan if the app reports an invalid band. Do not reuse a damaged wristband.</Text>
-  </View>
-);
-
-const SafetyContent = () => (
-  <View style={styles.guideContent}>
-    <Text style={styles.guideNotice}>This wristband supports awareness; it does not replace a calibrated gas monitor, site procedures, or emergency response equipment.</Text>
-    <Text style={styles.guideText}>• Leave the area immediately if an alarm sounds, you smell a rotten-egg odour, or you feel unwell. Warn others and report to supervision.</Text>
-    <Text style={styles.guideText}>• Hydrogen sulfide can quickly reduce your sense of smell. Never rely on odour to decide that an area is safe.</Text>
-    <Text style={styles.guideText}>• Follow your site’s confined-space, ventilation, monitoring, respiratory-protection, and rescue procedures. Never enter to rescue someone without proper training and equipment.</Text>
-    <Text style={styles.guideSource}>Safety content is aligned to OSHA hydrogen sulfide guidance; site rules always take priority.</Text>
-  </View>
-);
-
-const SheetMetric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <View style={styles.sheetMetric}>
-    <Text style={styles.sheetMetricVal}>{value}</Text>
-    <Text style={styles.sheetMetricLabel}>{label}</Text>
-  </View>
-);
-
-const EmptyGraphState: React.FC<{ t: (k: string) => string; onScan: () => void }> = ({ t, onScan }) => (
-  <View style={styles.emptyState}>
-    <Ionicons name="analytics-outline" size={52} color={theme.colors.text.light} />
-    <Text style={styles.emptyTitle}>{t('home.noReadings')}</Text>
-    <Text style={styles.emptyBody}>{t('home.noReadingsBody')}</Text>
-    <TouchableOpacity style={styles.emptyBtn} onPress={onScan} activeOpacity={0.8}>
-      <Text style={styles.emptyBtnText}>{t('home.scanFirst')}</Text>
-    </TouchableOpacity>
-  </View>
-);
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  scroll: { flex: 1 },
-  content: { paddingHorizontal: theme.spacing.xl, paddingTop: theme.spacing.lg, paddingBottom: 24 },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.xl,
-  },
-  headerLeft: { gap: 2 },
-  logoText: {
-    fontFamily: theme.typography.family.logo,
-    fontSize: theme.typography.size.xxl,
-    color: theme.colors.primary,
-    letterSpacing: theme.typography.letterSpacing.normal,
-  },
-  greetingText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.secondary,
-  },
-
-  graphCard: { marginHorizontal: 0, marginBottom: theme.spacing.lg, paddingHorizontal: 12 },
-  graphHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-    marginBottom: theme.spacing.md,
-  },
-  graphTitle: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.lg,
-    color: theme.colors.text.primary,
-    letterSpacing: theme.typography.letterSpacing.normal,
-  },
-  graphUnit: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.xs,
-    color: theme.colors.text.secondary,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.xs,
-    marginBottom: theme.spacing.md,
-    flexWrap: 'wrap',
-  },
-  toggleSep: { width: 8 },
-  pill: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: theme.radii.dropdown,
-    backgroundColor: '#edf2fb',
-  },
-  pillActive: { backgroundColor: theme.colors.primary },
-  pillText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-  },
-  pillTextActive: { color: '#fff' },
-
-  statsCard: { marginHorizontal: 0, marginBottom: theme.spacing.lg, paddingVertical: 14 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  statPill: { alignItems: 'center', gap: 2 },
-  statPillVal: {
-    fontFamily: theme.typography.family.bold,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.primary,
-  },
-  statPillLabel: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 10,
-    color: theme.colors.text.secondary,
-  },
-
-  scanCTA: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: theme.radii.btn,
-    marginBottom: theme.spacing.lg,
-    paddingVertical: 18,
-    paddingHorizontal: theme.spacing.xl,
-    gap: theme.spacing.md,
-    backgroundColor: theme.colors.primaryLight,
-    borderWidth: 1,
-    borderColor: '#86c5ff',
-    ...theme.shadows.button,
-  },
-  scanCTAText: {
-    flex: 1,
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.lg,
-    color: theme.colors.primary,
-    letterSpacing: theme.typography.letterSpacing.normal,
-  },
-  flashRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: theme.spacing.sm, marginTop: -4, marginBottom: theme.spacing.xl },
-  flashLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary },
-  flashToggle: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: theme.radii.full, backgroundColor: '#edf2fb' },
-  flashToggleActive: { backgroundColor: theme.colors.primary },
-  flashToggleText: { fontFamily: theme.typography.family.semiBold, fontSize: 12, color: theme.colors.text.secondary },
-  flashToggleTextActive: { color: '#fff' },
-  quickActions: { flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.xl },
-  quickAction: { flex: 1, minHeight: 118, backgroundColor: '#b8ddff', borderRadius: theme.radii.card, justifyContent: 'center', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.md },
-  quickActionText: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.primary, textAlign: 'center' },
-  exposureCard: { marginHorizontal: 0, marginBottom: theme.spacing.lg, paddingVertical: theme.spacing.xl },
-  exposureLabel: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.lg, color: theme.colors.text.primary },
-  exposureValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.xs, marginTop: theme.spacing.md },
-  exposureValue: { fontFamily: theme.typography.family.bold, fontSize: 42, color: theme.colors.text.primary },
-  exposureUnit: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.lg, color: theme.colors.text.primary },
-  exposureTrack: { height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: theme.colors.semantic.neutral, marginTop: theme.spacing.md },
-  exposureFill: { height: '100%', borderRadius: 5, backgroundColor: theme.colors.primary },
-  exposureScale: { flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.spacing.xs },
-  exposureScaleText: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.secondary },
-
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: theme.spacing.xxl,
-    gap: theme.spacing.md,
-  },
-  emptyTitle: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.lg,
-    color: theme.colors.text.primary,
-  },
-  emptyBody: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  emptyBtn: {
-    backgroundColor: theme.colors.primary,
-    borderRadius: theme.radii.btn,
-    paddingVertical: 12,
-    paddingHorizontal: theme.spacing.xl,
-    marginTop: theme.spacing.sm,
-  },
-  emptyBtnText: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.md,
-    color: '#fff',
-  },
-
-  // Bottom sheet
-  sheetBackdrop: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: theme.colors.background.card,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: theme.spacing.xl,
-    paddingBottom: 40,
-    ...theme.shadows.card,
-  },
-  sheetHandle: {
-    width: 40, height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.semantic.neutral,
-    alignSelf: 'center',
-    marginBottom: theme.spacing.lg,
-  },
-  sheetTitle: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.xl,
-    color: theme.colors.text.primary,
-    marginBottom: theme.spacing.md,
-    letterSpacing: theme.typography.letterSpacing.tight,
-  },
-  sheetRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginBottom: theme.spacing.lg },
-  sheetLabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.primary,
-  },
-  sheetSub: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.secondary,
-  },
-  sheetMetrics: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.xl,
-  },
-  sheetMetric: { alignItems: 'center', gap: 2 },
-  sheetMetricVal: {
-    fontFamily: theme.typography.family.bold,
-    fontSize: theme.typography.size.lg,
-    color: theme.colors.text.primary,
-  },
-  sheetMetricLabel: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-  },
-  sheetBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: theme.spacing.lg,
-  },
-  sheetCalib: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 11,
-    color: theme.colors.text.light,
-  },
-  sheetClose: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.radii.btn,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  sheetCloseText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.secondary,
-  },
-  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
-  guideModal: { backgroundColor: theme.colors.background.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: theme.spacing.xl, paddingBottom: 40 },
-  guideHeader: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
-  guideTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary },
-  guideContent: { gap: theme.spacing.md },
-  guideText: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.sm, color: theme.colors.text.primary, lineHeight: 21 },
-  guideNotice: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.semantic.danger, lineHeight: 21 },
-  guideSource: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.secondary, lineHeight: 16 },
-  guideClose: { marginTop: theme.spacing.xl, alignItems: 'center', backgroundColor: theme.colors.primary, borderRadius: theme.radii.btn, paddingVertical: 13 },
-  guideCloseText: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, color: '#fff' },
+  safe: { flex: 1, backgroundColor: '#F6F7F9' },
+  content: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
+  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  logoMark: { width: 38, height: 38 },
+  wordmark: { fontFamily: theme.typography.family.logo, fontSize: 29, color: '#101828', letterSpacing: -0.5 },
+  greeting: { marginTop: 5, fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085' },
+  headerActions: { flexDirection: 'row', gap: 10 },
+  iconControl: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', alignItems: 'center', justifyContent: 'center' },
+  accountBadge: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#1677FF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#D0E5FF' },
+  screenTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: '#101828', marginBottom: 12 },
+  exposureSurface: { backgroundColor: '#fff', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EAECF0' },
+  surfaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  surfaceLabel: { fontFamily: theme.typography.family.medium, fontSize: 14, color: '#475467' },
+  statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
+  statusPillText: { fontFamily: theme.typography.family.bold, fontSize: 10, letterSpacing: 0.4 },
+  loader: { height: 108, justifyContent: 'center' },
+  valueLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 24, marginBottom: 18 },
+  exposureValue: { fontFamily: theme.typography.family.bold, fontSize: 52, lineHeight: 56, color: '#101828', letterSpacing: -2 },
+  exposureUnit: { fontFamily: theme.typography.family.main, fontSize: 19, color: '#344054' },
+  meter: { flexDirection: 'row', gap: 3, height: 20, alignItems: 'stretch' },
+  segment: { flex: 1, borderRadius: 2, backgroundColor: '#E4E7EC' },
+  thresholdSegment: { borderRightWidth: 2, borderRightColor: '#98A2B3', borderRadius: 0 },
+  meterLabels: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
+  meterLabel: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#98A2B3' },
+  meterLimit: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085' },
+  utilityPanel: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 16, marginTop: 16, borderWidth: 1, borderColor: '#EAECF0' },
+  utilityRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  utilityRowLast: { borderBottomWidth: 0 },
+  utilityIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F4F7', alignItems: 'center', justifyContent: 'center' },
+  utilityTitle: { flex: 1, fontFamily: theme.typography.family.medium, fontSize: 15, color: '#344054' },
+  utilityValue: { fontFamily: theme.typography.family.semiBold, fontSize: 14, color: '#101828' },
+  primaryAction: { minHeight: 76, borderRadius: 20, backgroundColor: '#1677FF', marginTop: 16, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 13 },
+  primaryIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#ffffff2B', alignItems: 'center', justifyContent: 'center' },
+  primaryCopy: { flex: 1 },
+  primaryTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 17, color: '#fff' },
+  primaryHint: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#D9EAFF', marginTop: 2 },
+  quickActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
+  quickAction: { flex: 1, minHeight: 82, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 18, padding: 14, justifyContent: 'space-between' },
+  quickActionText: { fontFamily: theme.typography.family.medium, fontSize: 13, color: '#344054', marginTop: 10 },
+  footerNote: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085', lineHeight: 18, marginTop: 20, textAlign: 'center', paddingHorizontal: 16 },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
+  languageSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34 },
+  sheetHandle: { width: 38, height: 4, borderRadius: 4, backgroundColor: '#D0D5DD', alignSelf: 'center', marginBottom: 18 },
+  sheetTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: '#101828' },
+  sheetNote: { fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085', marginTop: 5, marginBottom: 16 },
+  languageOption: { minHeight: 62, paddingHorizontal: 14, marginBottom: 8, borderWidth: 1, borderColor: '#EAECF0', borderRadius: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  languageOptionActive: { borderColor: '#1677FF', backgroundColor: '#F0F7FF' },
+  languageNative: { fontFamily: theme.typography.family.semiBold, fontSize: 16, color: '#101828' },
+  languageEnglish: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085', marginTop: 1 },
 });

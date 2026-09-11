@@ -12,7 +12,10 @@ interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({ onTranslatePress, onAvatarPress, avatarUri }) => {
   return (
     <View style={styles.container}>
-      <Text style={styles.logo}>Vajra सेतु</Text>
+      <View style={styles.brandRow}>
+        <Image source={require('../../../assets/logo.png')} style={styles.logoMark} resizeMode="contain" />
+        <Text style={styles.logo}>Vajra सेतु</Text>
+      </View>
       
       <View style={styles.rightSection}>
         <TouchableOpacity style={styles.iconButton} onPress={onTranslatePress}>
@@ -47,6 +50,15 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.size.xxl,
     color: theme.colors.text.primary,
     letterSpacing: theme.typography.letterSpacing.tight,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+  },
+  logoMark: {
+    width: 34,
+    height: 34,
   },
   rightSection: {
     flexDirection: 'row',

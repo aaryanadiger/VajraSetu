@@ -13,7 +13,7 @@ interface BadgeProps {
 export const Badge: React.FC<BadgeProps> = ({ label, variant = 'info', style }) => {
   return (
     <View style={[styles.badge, { backgroundColor: theme.colors.semantic[variant] }, style]}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, variant === 'neutral' && styles.neutralLabel]}>{label}</Text>
     </View>
   );
 };
@@ -30,5 +30,8 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.size.xs,
     color: theme.colors.text.inverse,
     letterSpacing: theme.typography.letterSpacing.normal,
+  },
+  neutralLabel: {
+    color: theme.colors.text.primary,
   },
 });

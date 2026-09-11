@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import Svg, { Path, Rect, Line, Polyline } from 'react-native-svg';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { theme } from '../theme';
 
 const ACTIVE_COLOR = '#2b96ff';
 const INACTIVE_COLOR = '#9CA3AF';
@@ -35,7 +36,7 @@ export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigati
               testID={`tab-${route.name}`}
               onPress={onPress}
               activeOpacity={0.7}
-              style={styles.navItem}
+              style={[styles.navItem, isFocused && styles.navItemActive]}
             >
               {route.name === 'Home' && (
                 <Svg width={30} height={30} viewBox="0 0 24 24" fill="none">
@@ -152,6 +153,7 @@ export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigati
                   />
                 </Svg>
               )}
+              <Text style={[styles.navLabel, isFocused && styles.navLabelActive]}>{route.name === 'Scan' ? 'Scan' : route.name}</Text>
             </TouchableOpacity>
           );
         })}
@@ -170,27 +172,37 @@ const styles = StyleSheet.create({
   },
   navBar: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
-    borderTopWidth: 1.5,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-    borderColor: '#98c5fc',
+    borderTopWidth: 1,
+    borderColor: '#EAECF0',
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 16,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 18,
-    shadowColor: '#2b96ff',
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    shadowColor: '#101828',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 6,
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 5,
+    gap: 2,
+    borderRadius: 12,
+    marginHorizontal: 8,
+  },
+  navItemActive: {
+    backgroundColor: '#F0F7FF',
+  },
+  navLabel: {
+    fontFamily: theme.typography.family.medium,
+    fontSize: 11,
+    color: INACTIVE_COLOR,
+  },
+  navLabelActive: {
+    color: ACTIVE_COLOR,
   },
 });

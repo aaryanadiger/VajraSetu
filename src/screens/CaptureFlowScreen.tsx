@@ -1,89 +1,73 @@
-/**
- * CaptureFlowScreen — PRD §4
- *
- * Flow: Live camera → (auto-capture on frame-lock) → Processing → Result
- *
- * §4.1 Camera: torch toggle, auto-capture via frame-steady detection (~0.8s dwell),
- *              lock-on ring animation, shutter flash, no shutter button.
- * §4.2 Processing: one progress bar, honest real-pipeline status labels only.
- * §4.3 Result: invalid-band first, then risk badge + plain-language explanation,
- *              "View on graph" link back to Home. No team context.
- *
- * Algorithm untouched: v1 §6.1–6.4 pipeline (perspective → CIELAB → ΔE → TWA → Index)
- */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
-  ScrollView, Animated as RNAnimated,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import Animated, {
-  useSharedValue, useAnimatedStyle, withRepeat, withSequence,
-  withTiming, withSpring, FadeIn, FadeInDown,
-} from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../navigation/RootNavigator';
 import { theme } from '../theme';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { CameraOverlay } from '../components/CameraOverlay';
 import {
-  getSettings, createShift, createWristband, saveReading,
-  getProfile, ensureSingletonWorker,
+  createShift,
+  createWristband,
+  createWorker,
+  getWorkers,
+  getSettings,
+  saveReading,
 } from '../services/db';
 import { extractRegionsFromImage } from '../services/imageProcessing';
 import { runExposurePipeline } from '../services/exposure';
-import { ProcessingResult, AppSettings, RiskBand } from '../types';
+import { AppSettings, ProcessingResult, RiskBand } from '../types';
+import { AppLanguage, translateUi } from '../services/translation';
 
 type Step = 'camera' | 'processing' | 'result';
 
-// Real pipeline stages — labels map to actual steps running on-device
 const PIPELINE_STAGES = [
-  { key: 'step_perspective', weight: 0.15 },
-  { key: 'step_cielab',      weight: 0.20 },
-  { key: 'step_deltaE',      weight: 0.15 },
-  { key: 'step_expiry',      weight: 0.15 },
-  { key: 'step_twa',         weight: 0.15 },
-  { key: 'step_index',       weight: 0.10 },
-  { key: 'step_risk',        weight: 0.10 },
-] as const;
+  'Aligning the image',
+  'Reading the colour patches',
+  'Checking the wristband',
+  'Calculating exposure',
+  'Preparing your result',
+];
 
-function riskToBadge(band: RiskBand): 'success' | 'warning' | 'danger' | 'neutral' {
-  return { low: 'success', elevated: 'warning', high: 'danger', invalid: 'neutral' }[band] as any ?? 'neutral';
+const SHIFT_OPTIONS = [6, 8, 10, 12] as const;
+
+function riskCopy(band: RiskBand, language: AppLanguage) {
+  switch (band) {
+    case 'elevated':
+      return { title: translateUi('elevatedTitle', language, 'Exposure is elevated'), body: translateUi('elevatedBody', language, 'Pause when safe and tell your supervisor.'), icon: 'warning' as const, color: theme.colors.semantic.warning };
+    case 'high':
+      return { title: translateUi('highTitle', language, 'High exposure detected'), body: translateUi('highBody', language, 'Leave the area and alert your supervisor now.'), icon: 'alert-circle' as const, color: theme.colors.semantic.danger };
+    default:
+      return { title: translateUi('normalTitle', language, 'Within the normal range'), body: translateUi('normalBody', language, 'Continue following your site safety procedure.'), icon: 'checkmark-circle' as const, color: theme.colors.semantic.success };
+  }
 }
 
 export const CaptureFlowScreen: React.FC = () => {
-  const { t } = useTranslation();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { language } = useLanguage();
   const [step, setStep] = useState<Step>('camera');
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [torchOn, setTorchOn] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [torchOn, setTorchOn] = useState(Boolean(route.params?.initialTorch));
   const [shiftHours, setShiftHours] = useState(8);
   const [stageIndex, setStageIndex] = useState(0);
-  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ProcessingResult | null>(null);
-  const [captureFlash, setCaptureFlash] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
-
-  // Frame-lock state for auto-capture
-  const steadyCount = useRef(0);
-  const steadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const capturing = useRef(false);
+  const [capturing, setCapturing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
-
-  // Reanimated: lock-on ring pulse
-  const ringScale = useSharedValue(1);
-  const ringOpacity = useSharedValue(0);
-  const ringStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: ringScale.value }],
-    opacity: ringOpacity.value,
-  }));
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
 
   useEffect(() => {
     getSettings().then(setSettings);
@@ -93,664 +77,277 @@ export const CaptureFlowScreen: React.FC = () => {
     setTorchOn(Boolean(route.params?.initialTorch));
   }, [route.params?.initialTorch]);
 
-  // ── Frame-lock auto-capture ────────────────────────────────────────────────
-  // Called on each camera frame (mocked via interval; in a real build this would
-  // hook into the CameraView onCameraReady or use a frame processor).
-  // For hackathon: simulate frame-lock detection with a steady-hold timer.
-  useEffect(() => {
-    if (step !== 'camera' || !cameraReady || !settings || capturing.current) return;
-
-    // Start a dwell timer — fires after autoCaptureDelayMs if uninterrupted.
-    // In a real build, reset on significant frame motion; here we fire unconditionally
-    // after the delay to demonstrate the UX pattern.
-    const dwellTimer = setTimeout(() => {
-      if (step === 'camera' && !capturing.current) {
-        triggerLockAndCapture();
-      }
-    }, theme.motion.autoCaptureDelayMs);
-
-    return () => clearTimeout(dwellTimer);
-  }, [step]);
-
-  function triggerLockAndCapture() {
-    if (!cameraReady || !settings || capturing.current) return;
-    capturing.current = true;
-
-    // Lock-on ring animation
-    ringOpacity.value = withTiming(1, { duration: 150 });
-    ringScale.value = withSequence(
-      withTiming(1.15, { duration: 200 }),
-      withTiming(1.0, { duration: 180 })
-    );
-
-    setTimeout(async () => {
-      // Shutter flash
-      setCaptureFlash(true);
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      setTimeout(() => setCaptureFlash(false), 120);
-
-      ringOpacity.value = withTiming(0, { duration: 200 });
-      await handleCapture();
-    }, 350);
-  }
-
   async function handleCapture() {
+    if (!settings || capturing) return;
+    setCapturing(true);
     setStep('processing');
     setStageIndex(0);
-    setProgress(0);
 
     let imageUri = '';
     try {
-      if (cameraRef.current) {
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.9 });
-        imageUri = photo?.uri ?? '';
-      }
+      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.9 });
+      imageUri = photo?.uri ?? '';
     } catch {
-      // Demo fallback: extractRegionsFromImage handles missing URI
+      // The image service has a deterministic demo fallback when no URI is available.
     }
 
-    await runProcessingPipeline(imageUri);
-  }
-
-  // ── Processing pipeline ────────────────────────────────────────────────────
-
-  async function runProcessingPipeline(imageUri: string) {
-    if (!settings) return;
-
-    let cumWeight = 0;
-    for (let i = 0; i < PIPELINE_STAGES.length; i++) {
-      setStageIndex(i);
-      // Brief yield so UI updates before CPU-intensive work
-      await sleep(60);
-      cumWeight += PIPELINE_STAGES[i].weight;
-      setProgress(cumWeight);
+    let progressIndex = 0;
+    for (const _stage of PIPELINE_STAGES) {
+      setStageIndex(progressIndex);
+      await pause(100);
+      progressIndex += 1;
     }
 
     const regions = await extractRegionsFromImage(imageUri);
-    const res = await runExposurePipeline(regions, shiftHours, settings);
-    setResult(res);
-    setProgress(1);
+    const processed = await runExposurePipeline(regions, shiftHours, settings);
+    setResult(processed);
 
-    // Persist to DB under the singleton worker
     try {
-      const prof = await getProfile();
-      if (prof) {
-        const worker = await ensureSingletonWorker(prof);
-        const wristband = await createWristband({
+      const workers = await getWorkers();
+      const worker = workers[0] ?? await createWorker({
+        name: 'Worker',
+        worker_code: 'WORKER-001',
+        site_id: 'DEFAULT_SITE',
+      });
+      const wristband = await createWristband({
           batch_id: `BATCH-${Date.now()}`,
           issued_at: new Date().toISOString(),
           expiry_calibration_version: settings.calibration_curve_version,
-        });
-        const shift = await createShift({
+      });
+      const shift = await createShift({
           worker_id: worker.id,
           start_time: new Date(Date.now() - shiftHours * 3600000).toISOString(),
           end_time: new Date().toISOString(),
           wristband_id: wristband.id,
-        });
-        await saveReading({
+      });
+      await saveReading({
           shift_id: shift.id,
           wristband_id: wristband.id,
           captured_at: new Date().toISOString(),
           raw_image_path: imageUri || null,
-          ...res,
-        });
-      }
-    } catch (e) {
-      console.warn('[CaptureFlow] DB save error', e);
+          ...processed,
+      });
+    } catch (error) {
+      console.warn('[CaptureFlow] Could not save reading', error);
     }
 
     setStep('result');
+    setCapturing(false);
   }
 
-  // ── Reset ──────────────────────────────────────────────────────────────────
-
-  function handleReset() {
-    capturing.current = false;
+  function reset() {
     setStep('camera');
     setResult(null);
     setStageIndex(0);
-    setProgress(0);
-    setTorchOn(false);
     setCameraReady(false);
+    setCapturing(false);
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  if (step === 'camera') {
+    if (!permission) {
+      return <View style={styles.center}><ActivityIndicator color={theme.colors.primary} /></View>;
+    }
+    if (!permission.granted) {
+      return <PermissionStep onPress={requestPermission} />;
+    }
+    return (
+      <SafeAreaView style={styles.safe}>
+        <CameraView
+          ref={cameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          enableTorch={torchOn}
+          onCameraReady={() => setCameraReady(true)}
+          onMountError={() => setCameraReady(false)}
+        />
+        <CameraOverlay />
 
+        <View style={styles.cameraChrome}>
+          <View style={styles.cameraTopRow}>
+            <TouchableOpacity style={styles.cameraButton} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Close scanner">
+              <Ionicons name="close" size={25} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.cameraButton, torchOn && styles.cameraButtonActive]} onPress={() => setTorchOn(value => !value)} accessibilityRole="button" accessibilityLabel={torchOn ? 'Turn light off' : 'Turn light on'}>
+              <Ionicons name={torchOn ? 'flash' : 'flash-off'} size={22} color={torchOn ? '#FFD60A' : '#fff'} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.instructionCard}>
+            <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the wristband in the frame')}</Text>
+            <Text style={styles.instructionBody}>{tx('keepSteady', 'Keep the phone steady. Use the light if the patches look dark.')}</Text>
+          </View>
+
+          <View style={styles.cameraBottom}>
+            <View style={styles.shiftCard}>
+              <Text style={styles.shiftLabel}>{tx('shiftLength', 'Shift length')}</Text>
+              <View style={styles.shiftOptions}>
+                {SHIFT_OPTIONS.map(hours => (
+                  <TouchableOpacity key={hours} onPress={() => setShiftHours(hours)} style={[styles.shiftOption, shiftHours === hours && styles.shiftOptionActive]} accessibilityRole="radio" accessibilityState={{ selected: shiftHours === hours }}>
+                    <Text style={[styles.shiftOptionText, shiftHours === hours && styles.shiftOptionTextActive]}>{hours}h</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing) && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing} accessibilityRole="button" accessibilityLabel="Capture wristband">
+              <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
+              <Text style={styles.captureLabel}>{cameraReady ? tx('tapToScan', 'Tap to scan') : tx('startingCamera', 'Starting camera…')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (step === 'processing') {
+    const progress = Math.min(1, (stageIndex + 1) / PIPELINE_STAGES.length);
+    return (
+      <View style={styles.center}>
+        <View style={styles.processingIcon}><Ionicons name="scan-outline" size={32} color={theme.colors.primary} /></View>
+        <Text style={styles.processingTitle}>{tx('checkingBand', 'Checking your wristband')}</Text>
+        <Text style={styles.processingBody}>{tx('staysOnPhone', 'This stays on the phone.')}</Text>
+        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress * 100}%` }]} /></View>
+        <Text style={styles.processingStatus}>{tx((['alignImage', 'readPatches', 'checkBand', 'calculateExposure', 'prepareResult'] as const)[stageIndex], PIPELINE_STAGES[stageIndex])}</Text>
+      </View>
+    );
+  }
+
+  if (!result) return null;
+
+  return <ResultStep result={result} settings={settings} language={language} onRescan={reset} onDone={() => navigation.navigate('Home')} onHistory={() => navigation.navigate('History')} />;
+};
+
+const PermissionStep: React.FC<{ onPress: () => void }> = ({ onPress }) => {
+  const { language } = useLanguage();
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
   return (
-    <SafeAreaView style={styles.safe}>
-      {/* Shutter flash overlay */}
-      {captureFlash && <View style={styles.flashOverlay} />}
-
-      {step === 'camera' && (
-        !cameraPermission ? <View style={styles.permissionContainer} /> :
-        !cameraPermission.granted ? (
-          <CameraPermissionStep onRequestPermission={requestCameraPermission} t={t} />
-        ) : (
-          <CameraStep
-            cameraRef={cameraRef}
-            torchOn={torchOn}
-            onTorchToggle={() => setTorchOn(v => !v)}
-            onCameraReady={() => setCameraReady(true)}
-            onCameraError={() => setCameraReady(false)}
-            ringStyle={ringStyle}
-            shiftHours={shiftHours}
-            onShiftHoursChange={setShiftHours}
-            onManualCapture={triggerLockAndCapture}
-            t={t}
-          />
-        )
-      )}
-
-      {step === 'processing' && (
-        <ProcessingStep
-          stageKey={PIPELINE_STAGES[stageIndex]?.key ?? 'step_risk'}
-          progress={progress}
-          t={t}
-        />
-      )}
-
-      {step === 'result' && result && (
-        <ResultStep
-          result={result}
-          settings={settings}
-          onRescan={handleReset}
-          onViewGraph={() => navigation.navigate('Home')}
-          t={t}
-        />
-      )}
+    <SafeAreaView style={styles.permissionScreen}>
+      <View style={styles.permissionIcon}><Ionicons name="camera-outline" size={34} color={theme.colors.primary} /></View>
+      <Text style={styles.permissionTitle}>{tx('cameraNeeded', 'Camera access is needed')}</Text>
+      <Text style={styles.permissionBody}>{tx('cameraReason', 'Vajra Setu uses the camera to read the colour patches on your wristband.')}</Text>
+      <Button label={tx('allowCamera', 'Allow camera')} onPress={onPress} style={styles.permissionButton} />
     </SafeAreaView>
   );
 };
 
-// ── §4.1 Camera Step ──────────────────────────────────────────────────────────
-
-const SHIFT_OPTIONS = [6, 8, 10, 12] as const;
-
-const CameraStep: React.FC<{
-  cameraRef: React.RefObject<CameraView | null>;
-  torchOn: boolean;
-  onTorchToggle: () => void;
-  onCameraReady: () => void;
-  onCameraError: () => void;
-  ringStyle: any;
-  shiftHours: number;
-  onShiftHoursChange: (h: number) => void;
-  onManualCapture: () => void;
-  t: (k: string) => string;
-}> = ({ cameraRef, torchOn, onTorchToggle, onCameraReady, onCameraError, ringStyle, shiftHours, onShiftHoursChange, onManualCapture, t }) => (
-  <View style={{ flex: 1 }}>
-    <CameraView
-      ref={cameraRef}
-      style={StyleSheet.absoluteFill}
-      facing="back"
-      enableTorch={torchOn}
-      onCameraReady={onCameraReady}
-      onMountError={onCameraError}
-    />
-    <CameraOverlay />
-
-    {/* Lock-on ring */}
-    <Animated.View style={[styles.lockRing, ringStyle]} pointerEvents="none" />
-
-    {/* Camera UI chrome */}
-    <View style={styles.cameraUI}>
-      {/* Torch button */}
-      <TouchableOpacity
-        style={[styles.torchBtn, torchOn && styles.torchBtnActive]}
-        onPress={onTorchToggle}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={torchOn ? 'Turn flash off' : 'Turn flash on'}
-      >
-        <Ionicons
-          name={torchOn ? 'flash' : 'flash-off'}
-          size={22}
-          color={torchOn ? '#FFD60A' : '#fff'}
-        />
-      </TouchableOpacity>
-
-      {/* Instruction banner */}
-      <View style={styles.instrBanner}>
-        <Text style={styles.instrText}>{t('scan.alignInstruction')}</Text>
-        <Text style={styles.holdText}>{t('scan.holdSteady')}</Text>
-      </View>
-
-      {/* Shift duration picker (compact) */}
-      <View style={styles.shiftPickerRow}>
-        <Text style={styles.shiftPickerLabel}>{t('scan.shiftHours')}</Text>
-        <View style={styles.shiftPills}>
-          {SHIFT_OPTIONS.map(h => (
-            <TouchableOpacity
-              key={h}
-              style={[styles.shiftPill, shiftHours === h && styles.shiftPillActive]}
-              onPress={() => onShiftHoursChange(h)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.shiftPillText, shiftHours === h && styles.shiftPillTextActive]}>
-                {t('scan.shiftHoursUnit').replace('{{hours}}', String(h))}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    </View>
-  </View>
-);
-
-const CameraPermissionStep: React.FC<{
-  onRequestPermission: () => void;
-  t: (k: string) => string;
-}> = ({ onRequestPermission, t }) => (
-  <View style={styles.permissionContainer}>
-    <Ionicons name="camera-outline" size={56} color={theme.colors.primary} />
-    <Text style={styles.permissionTitle}>Camera access needed</Text>
-    <Text style={styles.permissionBody}>
-      Allow camera access to scan your exposure wristband.
-    </Text>
-    <Button label="Enable camera" onPress={onRequestPermission} style={styles.permissionButton} />
-  </View>
-);
-
-// ── §4.2 Processing Step ──────────────────────────────────────────────────────
-
-const ProcessingStep: React.FC<{
-  stageKey: string;
-  progress: number;
-  t: (k: string) => string;
-}> = ({ stageKey, progress, t }) => (
-  <Animated.View entering={FadeIn.duration(200)} style={styles.processingContainer}>
-    <Text style={styles.processingTitle}>{t('scan.processingTitle')}</Text>
-
-    {/* Single honest progress bar */}
-    <View style={styles.progressBg}>
-      <Animated.View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
-    </View>
-
-    {/* Single status line — maps to real pipeline step */}
-    <Text style={styles.processingStatus}>{t(`scan.${stageKey}` as any)}</Text>
-  </Animated.View>
-);
-
-// ── §4.3 Result Step ──────────────────────────────────────────────────────────
-
-function riskExplanation(band: RiskBand, t: (k: string) => string): string {
-  if (band === 'low') return t('scan.riskExplanation_low');
-  if (band === 'elevated') return t('scan.riskExplanation_elevated');
-  if (band === 'high') return t('scan.riskExplanation_high');
-  return '';
-}
-
 const ResultStep: React.FC<{
   result: ProcessingResult;
   settings: AppSettings | null;
+  language: AppLanguage;
   onRescan: () => void;
-  onViewGraph: () => void;
-  t: (k: string) => string;
-}> = ({ result, settings, onRescan, onViewGraph, t }) => {
-  const oel = settings?.oel_twa_ppm ?? 5;
-
+  onDone: () => void;
+  onHistory: () => void;
+}> = ({ result, settings, language, onRescan, onDone, onHistory }) => {
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
   if (!result.band_valid) {
     return (
-      <Animated.ScrollView entering={FadeInDown.duration(260)} contentContainerStyle={styles.scrollContent}>
-        <Card style={styles.invalidCard}>
-          <LinearGradient
-            colors={['rgba(239,68,68,0.12)', 'rgba(239,68,68,0)']}
-            style={styles.invalidGradient}
-          />
-          <View style={styles.invalidIconWrap}>
-            <Ionicons name="alert-circle" size={52} color={theme.colors.semantic.danger} />
-          </View>
-          <Text style={styles.invalidTitle}>{t('scan.invalidBand')}</Text>
-          <Text style={styles.invalidBody}>{t('scan.invalidBandBody')}</Text>
-          <Text style={styles.deltaELabel}>Expiry ΔE: {result.expiry_delta_e.toFixed(2)}</Text>
-          <Button label={t('scan.scanAgain')} onPress={onRescan} style={{ width: '100%' }} />
-        </Card>
-      </Animated.ScrollView>
+      <SafeAreaView style={styles.resultScreen}>
+        <ScrollView contentContainerStyle={styles.resultContent}>
+          <View style={[styles.resultIcon, { backgroundColor: '#EF44441A' }]}><Ionicons name="close-circle" size={42} color={theme.colors.semantic.danger} /></View>
+          <Text style={styles.resultHeading}>{tx('replaceBand', 'Replace the wristband')}</Text>
+          <Text style={styles.resultBody}>{tx('replaceBandBody', 'The expiry patch is not valid, so this scan cannot be used. Do not rely on this result.')}</Text>
+          <Card style={styles.resultCard}>
+            <Text style={styles.detailLabel}>{tx('whatToDo', 'What to do')}</Text>
+            <Text style={styles.detailText}>{tx('newBand', 'Use a new wristband and scan again.')} {tx('tellSupervisor', 'If this keeps happening, tell your supervisor.')}</Text>
+            <Text style={styles.detailSub}>Expiry ΔE: {result.expiry_delta_e.toFixed(2)}</Text>
+          </Card>
+          <Button label={tx('rescan', 'Scan another wristband')} onPress={onRescan} style={styles.fullButton} />
+          <Button label={tx('done', 'Done')} variant="outline" onPress={onDone} style={styles.fullButton} />
+        </ScrollView>
+      </SafeAreaView>
     );
   }
 
-  const band = result.risk_band as RiskBand;
+  const copy = riskCopy(result.risk_band, language);
+  const oel = settings?.oel_twa_ppm ?? 5;
   return (
-    <Animated.ScrollView entering={FadeInDown.duration(260)} contentContainerStyle={styles.scrollContent}>
-      {/* Risk badge */}
-      <Animated.View entering={FadeIn.delay(60).duration(240)} style={styles.resultBadgeRow}>
-        <Badge
-          label={t(`riskBand.${band}` as any)}
-          variant={riskToBadge(band)}
-          style={styles.resultBadge}
-        />
-      </Animated.View>
+    <SafeAreaView style={styles.resultScreen}>
+      <ScrollView contentContainerStyle={styles.resultContent}>
+        <View style={styles.resultHeader}>
+          <TouchableOpacity onPress={onDone} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Close result">
+            <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+          </TouchableOpacity>
+          <Text style={styles.resultHeaderTitle}>{tx('scanComplete', 'Scan complete')}</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={[styles.resultIcon, { backgroundColor: `${copy.color}1A` }]}><Ionicons name={copy.icon} size={42} color={copy.color} /></View>
+        <Badge label={result.risk_band.toUpperCase()} variant={result.risk_band === 'high' ? 'danger' : result.risk_band === 'elevated' ? 'warning' : 'success'} style={styles.resultBadge} />
+        <Text style={styles.resultHeading}>{copy.title}</Text>
+        <Text style={styles.resultBody}>{copy.body}</Text>
 
-      {/* Plain-language explanation */}
-      <Animated.View entering={FadeInDown.delay(100).duration(280)}>
-        <Card style={styles.explanationCard}>
-          <Text style={styles.explanationText}>{riskExplanation(band, t)}</Text>
+        <Card style={styles.resultCard}>
+          <Text style={styles.detailLabel}>{tx('latestExposure', 'Your latest reading')}</Text>
+          <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.twa_ppm.toFixed(2)}</Text><Text style={styles.bigUnit}>ppm TWA</Text></View>
+          <View style={styles.resultRule} />
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'Reference limit')}</Text><Text style={styles.detailValue}>{oel} ppm TWA</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>Cumulative exposure</Text><Text style={styles.detailValue}>{result.cumulative_ppm_hr.toFixed(1)} ppm·hr</Text></View>
         </Card>
-      </Animated.View>
 
-      {/* Metrics */}
-      <Animated.View entering={FadeInDown.delay(160).duration(280)}>
-        <Card>
-          <View style={styles.metricsGrid}>
-            <MetricBox
-              label={t('scan.twa')}
-              value={result.twa_ppm.toFixed(3)}
-              unit="ppm"
-              sub={`OEL: ${oel} ppm`}
-              alert={result.twa_ppm >= oel}
-            />
-            <MetricBox
-              label={t('scan.cumulative')}
-              value={result.cumulative_ppm_hr.toFixed(1)}
-              unit="ppm·hr"
-              sub={`OEL 8h: ${(oel * 8).toFixed(0)} ppm·hr`}
-              alert={result.cumulative_ppm_hr >= oel * 8}
-            />
-            <MetricBox
-              label={t('scan.h2sIndex')}
-              value={result.h2s_index.toFixed(1)}
-              unit=""
-              sub={t('scan.estimatedMode')}
-            />
-            <MetricBox
-              label={t('scan.sensingDeltaE')}
-              value={result.sensing_delta_e.toFixed(2)}
-              unit="ΔE₀₀"
-              sub="CIEDE2000"
-            />
-          </View>
-          <Text style={styles.calibNote}>
-            {t('scan.calibration')}: {result.calibration_curve_version} · {result.index_mode.replace(/_/g, ' ')}
-          </Text>
-        </Card>
-      </Animated.View>
-
-      {/* Actions */}
-      <Animated.View entering={FadeInDown.delay(220).duration(280)} style={styles.resultActions}>
-        <TouchableOpacity style={styles.viewGraphBtn} onPress={onViewGraph} activeOpacity={0.8}>
-          <Ionicons name="analytics-outline" size={18} color={theme.colors.primary} />
-          <Text style={styles.viewGraphText}>{t('common.viewGraph')}</Text>
-        </TouchableOpacity>
-        <Button
-          label={t('scan.scanAgain')}
-          variant="outline"
-          onPress={onRescan}
-          style={{ flex: 1 }}
-        />
-      </Animated.View>
-
-      <View style={{ height: 80 }} />
-    </Animated.ScrollView>
+        <Button label={tx('done', 'Done')} onPress={onDone} style={styles.fullButton} />
+        <View style={styles.secondaryActions}>
+          <TouchableOpacity onPress={onRescan} style={styles.secondaryAction}><Ionicons name="scan-outline" size={18} color={theme.colors.primary} /><Text style={styles.secondaryActionText}>{tx('rescan', 'Scan again')}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={onHistory} style={styles.secondaryAction}><Ionicons name="time-outline" size={18} color={theme.colors.primary} /><Text style={styles.secondaryActionText}>{tx('viewAll', 'View history')}</Text></TouchableOpacity>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
-const MetricBox: React.FC<{
-  label: string; value: string; unit: string; sub: string;
-  alert?: boolean;
-}> = ({ label, value, unit, sub, alert }) => (
-  <View style={styles.metricBox}>
-    <Text style={styles.metricLabel}>{label}</Text>
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 2 }}>
-      <Text style={[styles.metricValue, alert && { color: theme.colors.semantic.danger }]}>
-        {value}
-      </Text>
-      {unit ? <Text style={styles.metricUnit}>{unit}</Text> : null}
-    </View>
-    <Text style={styles.metricSub}>{sub}</Text>
-  </View>
-);
-
-function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
+function pause(ms: number) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.background.screen },
-  flashOverlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: '#fff',
-    zIndex: 999,
-  },
-
-  // Camera
-  cameraUI: {
-    flex: 1,
-    justifyContent: 'space-between',
-    padding: theme.spacing.xl,
-    paddingTop: 56,
-  },
-  torchBtn: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'center', alignItems: 'center',
-    alignSelf: 'flex-end',
-  },
-  torchBtnActive: { backgroundColor: 'rgba(255,214,10,0.28)' },
-  permissionContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xxl,
-    gap: theme.spacing.lg,
-    backgroundColor: theme.colors.background.screen,
-  },
-  permissionTitle: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.xl,
-    color: theme.colors.text.primary,
-  },
-  permissionBody: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  permissionButton: { width: '100%', marginTop: theme.spacing.md },
-  lockRing: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '30%',
-    width: 120, height: 120,
-    borderRadius: 60,
-    borderWidth: 3,
-    borderColor: theme.colors.primary,
-  },
-  instrBanner: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.52)',
-    borderRadius: theme.radii.md,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.lg,
-    gap: 2,
-    alignItems: 'center',
-  },
-  instrText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.sm,
-    color: '#fff',
-    textAlign: 'center',
-  },
-  holdText: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 11,
-    color: 'rgba(255,255,255,0.7)',
-    textAlign: 'center',
-  },
-  shiftPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: theme.radii.md,
-    padding: theme.spacing.md,
-  },
-  shiftPickerLabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.xs,
-    color: 'rgba(255,255,255,0.75)',
-  },
-  shiftPills: { flexDirection: 'row', gap: theme.spacing.xs },
-  shiftPill: {
-    paddingVertical: 4, paddingHorizontal: 10,
-    borderRadius: theme.radii.dropdown,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  shiftPillActive: { backgroundColor: theme.colors.primary },
-  shiftPillText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.xs,
-    color: 'rgba(255,255,255,0.75)',
-  },
-  shiftPillTextActive: { color: '#fff' },
-
-  // Processing
-  processingContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: theme.spacing.xxl,
-    gap: theme.spacing.xl,
-  },
-  processingTitle: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.xl,
-    color: theme.colors.text.primary,
-    letterSpacing: theme.typography.letterSpacing.tight,
-  },
-  progressBg: {
-    width: '100%',
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: theme.colors.semantic.neutral,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: theme.colors.primary,
-  },
-  processingStatus: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.primary,
-    textAlign: 'center',
-  },
-
-  // Result
-  scrollContent: { padding: theme.spacing.xl, paddingBottom: 40 },
-  resultBadgeRow: {
-    alignItems: 'center',
-    marginBottom: theme.spacing.xl,
-  },
-  resultBadge: { transform: [{ scale: 1.4 }] },
-  explanationCard: {
-    marginHorizontal: 0,
-    marginBottom: theme.spacing.lg,
-    paddingVertical: theme.spacing.xl,
-  },
-  explanationText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.md,
-    color: theme.colors.text.primary,
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.md,
-    marginBottom: theme.spacing.md,
-  },
-  metricBox: {
-    flex: 1,
-    minWidth: '45%',
-    backgroundColor: '#f5f8ff',
-    borderRadius: theme.radii.md,
-    padding: theme.spacing.md,
-    gap: 2,
-  },
-  metricLabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  metricValue: {
-    fontFamily: theme.typography.family.bold,
-    fontSize: theme.typography.size.xl,
-    color: theme.colors.text.primary,
-  },
-  metricUnit: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.xs,
-    color: theme.colors.text.secondary,
-  },
-  metricSub: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 10,
-    color: theme.colors.text.light,
-  },
-  calibNote: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-  },
-  resultActions: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginTop: theme.spacing.xl,
-    alignItems: 'center',
-  },
-  viewGraphBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: theme.spacing.sm,
-    borderWidth: 1.5,
-    borderColor: theme.colors.primary,
-    borderRadius: theme.radii.btn,
-    paddingVertical: 12,
-  },
-  viewGraphText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.primary,
-  },
-
-  // Invalid
-  invalidCard: {
-    marginHorizontal: 0,
-    alignItems: 'center',
-    gap: theme.spacing.lg,
-    overflow: 'hidden',
-  },
-  invalidGradient: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: 80,
-  },
-  invalidIconWrap: {
-    width: 88, height: 88, borderRadius: 44,
-    backgroundColor: 'rgba(239,68,68,0.1)',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  invalidTitle: {
-    fontFamily: theme.typography.family.bold,
-    fontSize: theme.typography.size.xl,
-    color: theme.colors.semantic.danger,
-  },
-  invalidBody: {
-    fontFamily: theme.typography.family.main,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  deltaELabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.secondary,
-  },
+  safe: { flex: 1, backgroundColor: '#101820' },
+  center: { flex: 1, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
+  cameraChrome: { flex: 1, justifyContent: 'space-between', padding: theme.spacing.xl, paddingTop: 18 },
+  cameraTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  cameraButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00000088', alignItems: 'center', justifyContent: 'center' },
+  cameraButtonActive: { backgroundColor: '#6e5b0088' },
+  instructionCard: { alignSelf: 'center', backgroundColor: '#00000099', borderRadius: 18, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.lg, maxWidth: 320 },
+  instructionTitle: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
+  instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
+  cameraBottom: { gap: theme.spacing.lg },
+  shiftCard: { backgroundColor: '#00000099', borderRadius: 18, padding: theme.spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  shiftLabel: { color: '#ffffffCC', fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs },
+  shiftOptions: { flexDirection: 'row', gap: theme.spacing.xs },
+  shiftOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ffffff22' },
+  shiftOptionActive: { backgroundColor: theme.colors.primary },
+  shiftOptionText: { color: '#ffffffCC', fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs },
+  shiftOptionTextActive: { color: '#fff' },
+  captureButton: { alignItems: 'center', gap: theme.spacing.sm },
+  captureButtonDisabled: { opacity: 0.55 },
+  captureButtonInner: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#fff', borderWidth: 5, borderColor: '#ffffff99', justifyContent: 'center', alignItems: 'center' },
+  captureLabel: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, backgroundColor: '#00000088', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
+  permissionScreen: { flex: 1, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
+  permissionIcon: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.lg },
+  permissionTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary, textAlign: 'center' },
+  permissionBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, maxWidth: 320 },
+  permissionButton: { width: '100%', marginTop: theme.spacing.xl },
+  processingIcon: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.xl },
+  processingTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary },
+  processingBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary, marginTop: theme.spacing.sm },
+  progressTrack: { width: '100%', height: 10, borderRadius: 5, backgroundColor: theme.colors.semantic.neutral, overflow: 'hidden', marginTop: theme.spacing.xxl },
+  progressFill: { height: '100%', backgroundColor: theme.colors.primary, borderRadius: 5 },
+  processingStatus: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary, marginTop: theme.spacing.md },
+  resultScreen: { flex: 1, backgroundColor: theme.colors.background.screen },
+  resultContent: { padding: theme.spacing.xl, paddingBottom: 48, alignItems: 'center' },
+  resultHeader: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.xxl },
+  backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffffffAA', alignItems: 'center', justifyContent: 'center' },
+  resultHeaderTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.lg, color: theme.colors.text.primary },
+  resultIcon: { width: 84, height: 84, borderRadius: 30, alignItems: 'center', justifyContent: 'center', marginBottom: theme.spacing.lg },
+  resultBadge: { marginBottom: theme.spacing.md },
+  resultHeading: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xxl, color: theme.colors.text.primary, textAlign: 'center' },
+  resultBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, marginBottom: theme.spacing.xl, maxWidth: 340 },
+  resultCard: { width: '100%', marginHorizontal: 0, borderRadius: 20, marginBottom: theme.spacing.lg },
+  detailLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary },
+  detailText: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.primary, marginTop: theme.spacing.sm },
+  detailSub: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.light, marginTop: theme.spacing.lg },
+  bigMetricRow: { flexDirection: 'row', alignItems: 'baseline', gap: theme.spacing.sm, marginTop: theme.spacing.sm },
+  bigMetric: { fontFamily: theme.typography.family.bold, fontSize: 48, color: theme.colors.text.primary, letterSpacing: -1 },
+  bigUnit: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary },
+  resultRule: { height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.lg },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: theme.spacing.sm },
+  detailValue: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, color: theme.colors.text.primary },
+  fullButton: { width: '100%', marginBottom: theme.spacing.md },
+  secondaryActions: { flexDirection: 'row', width: '100%', gap: theme.spacing.md, marginTop: theme.spacing.sm },
+  secondaryAction: { flex: 1, minHeight: 48, borderRadius: 16, backgroundColor: '#ffffffAA', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: theme.spacing.sm },
+  secondaryActionText: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.primary },
 });

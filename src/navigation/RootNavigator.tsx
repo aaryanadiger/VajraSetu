@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LoginScreen } from '../screens/LoginScreen';
 import { AppNavigator } from './AppNavigator';
 import { getSessionActive, clearSession } from '../services/auth';
+import { AppLanguage } from '../services/translation';
 
 // ─── Auth Context ─────────────────────────────────────────────────────────────
 
@@ -23,6 +24,20 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+interface LanguageContextType {
+  language: AppLanguage;
+  setLanguage: (language: AppLanguage) => void;
+}
+
+const LanguageContext = createContext<LanguageContextType>({
+  language: 'bho-IN',
+  setLanguage: () => {},
+});
+
+export function useLanguage() {
+  return useContext(LanguageContext);
+}
+
 // ─── Stack Types ──────────────────────────────────────────────────────────────
 
 export type RootStackParamList = {
@@ -36,6 +51,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const RootNavigator: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(getSessionActive());
+  const [language, setLanguage] = useState<AppLanguage>('bho-IN');
 
   const login = useCallback(() => setIsAuthenticated(true), []);
   const logout = useCallback(() => {
@@ -45,15 +61,17 @@ export const RootNavigator: React.FC = () => {
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
-      <NavigationContainer>
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          {isAuthenticated ? (
-            <Stack.Screen name="App" component={AppNavigator} />
-          ) : (
-            <Stack.Screen name="Login" component={LoginScreen} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+      <LanguageContext.Provider value={{ language, setLanguage }}>
+        <NavigationContainer>
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            {isAuthenticated ? (
+              <Stack.Screen name="App" component={AppNavigator} />
+            ) : (
+              <Stack.Screen name="Login" component={LoginScreen} />
+            )}
+          </Stack.Navigator>
+        </NavigationContainer>
+      </LanguageContext.Provider>
     </AuthContext.Provider>
   );
 };

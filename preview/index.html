@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -7,9 +8,13 @@
   <meta name="description" content="Vajra सेतु – Worker exposure monitoring and safety management app." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
   <style>
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
@@ -28,7 +33,8 @@
       --radius-dropdown: 50px;
     }
 
-    html, body {
+    html,
+    body {
       height: 100%;
       background: linear-gradient(160deg, #dce8f8 0%, #b8d0f0 100%);
       display: flex;
@@ -60,7 +66,10 @@
       scrollbar-width: none;
       -ms-overflow-style: none;
     }
-    .scroll-area::-webkit-scrollbar { display: none; }
+
+    .scroll-area::-webkit-scrollbar {
+      display: none;
+    }
 
     /* ──────────── HEADER ──────────── */
     .header {
@@ -93,7 +102,10 @@
       opacity: 0.75;
       transition: opacity 0.2s;
     }
-    .translate-btn:hover { opacity: 1; }
+
+    .translate-btn:hover {
+      opacity: 1;
+    }
 
     .avatar {
       width: 46px;
@@ -103,6 +115,7 @@
       overflow: hidden;
       flex-shrink: 0;
     }
+
     .avatar-placeholder {
       width: 100%;
       height: 100%;
@@ -251,7 +264,10 @@
       outline: none;
       transition: background 0.2s;
     }
-    .dropdown-select:hover { background: #90c5fa; }
+
+    .dropdown-select:hover {
+      background: #90c5fa;
+    }
 
     .dropdown-chevron {
       position: absolute;
@@ -298,8 +314,15 @@
     }
 
     @keyframes pulse-green {
-      0%, 100% { box-shadow: 0 0 5px rgba(34, 197, 94, 0.4); }
-      50%       { box-shadow: 0 0 14px rgba(34, 197, 94, 0.75); }
+
+      0%,
+      100% {
+        box-shadow: 0 0 5px rgba(34, 197, 94, 0.4);
+      }
+
+      50% {
+        box-shadow: 0 0 14px rgba(34, 197, 94, 0.75);
+      }
     }
 
     .status-text {
@@ -358,7 +381,9 @@
       box-shadow: 0 8px 24px rgba(59, 126, 232, 0.22);
     }
 
-    .action-btn:active { transform: scale(0.96); }
+    .action-btn:active {
+      transform: scale(0.96);
+    }
 
     .action-btn-label {
       font-family: 'DM Sans', sans-serif;
@@ -400,21 +425,42 @@
 
     /* ──────────── ANIMATIONS ──────────── */
     @keyframes fadeInUp {
-      from { opacity: 0; transform: translateY(18px); }
-      to   { opacity: 1; transform: translateY(0); }
+      from {
+        opacity: 0;
+        transform: translateY(18px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
 
-    .header           { animation: fadeInUp 0.4s ease 0.00s both; }
-    .exposure-section { animation: fadeInUp 0.4s ease 0.08s both; }
-    .card             { animation: fadeInUp 0.4s ease 0.16s both; }
-    .bottom-nav       { animation: fadeInUp 0.3s ease 0.06s both; }
+    .header {
+      animation: fadeInUp 0.4s ease 0.00s both;
+    }
+
+    .exposure-section {
+      animation: fadeInUp 0.4s ease 0.08s both;
+    }
+
+    .card {
+      animation: fadeInUp 0.4s ease 0.16s both;
+    }
+
+    .bottom-nav {
+      animation: fadeInUp 0.3s ease 0.06s both;
+    }
 
     /* ──────────── RESPONSIVE: real phone ──────────── */
     @media (max-width: 430px) {
-      html, body {
+
+      html,
+      body {
         background: linear-gradient(175deg, #f5f8ff 0%, #e8f1fb 48%, #c8daf4 100%);
         align-items: flex-start;
       }
+
       .phone {
         width: 100%;
         height: 100%;
@@ -424,289 +470,312 @@
     }
   </style>
 </head>
+
 <body>
 
-<div class="phone">
-  <div class="scroll-area">
+  <div class="phone">
+    <div class="scroll-area">
 
-    <!-- ── HEADER ── -->
-    <header class="header">
-      <div class="logo">Vajra सेतु</div>
-      <div class="header-right">
-        <!-- Translate Icon matching Figma (中A bilingual icon) -->
-        <div class="translate-btn" title="Translate" role="button" tabindex="0" aria-label="Translate">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <text x="1.5" y="14" font-family="'Noto Sans SC', sans-serif" font-size="10" fill="#333" font-weight="500">中</text>
-            <text x="13" y="22" font-family="'DM Sans', sans-serif" font-size="9" fill="#333" font-weight="700">A</text>
-            <line x1="13" y1="23" x2="20.5" y2="23" stroke="#333" stroke-width="1.2" stroke-linecap="round"/>
-          </svg>
+      <!-- ── HEADER ── -->
+      <header class="header">
+        <div class="logo">Vajra सेतु</div>
+        <div class="header-right">
+          <!-- Translate Icon matching Figma (中A bilingual icon) -->
+          <div class="translate-btn" title="Translate" role="button" tabindex="0" aria-label="Translate">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <text x="1.5" y="14" font-family="'Noto Sans SC', sans-serif" font-size="10" fill="#333"
+                font-weight="500">中</text>
+              <text x="13" y="22" font-family="'DM Sans', sans-serif" font-size="9" fill="#333"
+                font-weight="700">A</text>
+              <line x1="13" y1="23" x2="20.5" y2="23" stroke="#333" stroke-width="1.2" stroke-linecap="round" />
+            </svg>
+          </div>
+          <!-- Avatar -->
+          <div class="avatar" id="avatarEl">
+            <div class="avatar-placeholder">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="8" r="4" fill="rgba(255,255,255,0.9)" />
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" fill="rgba(255,255,255,0.9)" />
+              </svg>
+            </div>
+          </div>
         </div>
-        <!-- Avatar -->
-        <div class="avatar" id="avatarEl">
-          <div class="avatar-placeholder">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="12" cy="8" r="4" fill="rgba(255,255,255,0.9)"/>
-              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" fill="rgba(255,255,255,0.9)"/>
+      </header>
+
+      <!-- ── EXPOSURE SECTION ── -->
+      <section class="exposure-section">
+        <h1 class="section-title">Today's Exposure</h1>
+
+        <div class="exposure-value">
+          <span class="exposure-number" id="exposureNum">23</span>
+          <span class="exposure-unit">ppm.hr</span>
+        </div>
+
+        <div class="progress-wrapper">
+          <div class="segmented-bar" id="segBar">
+            <div class="threshold-marker" id="thresholdMarker"></div>
+          </div>
+          <div class="progress-labels">
+            <span class="progress-label">0</span>
+            <span class="progress-label">100</span>
+          </div>
+        </div>
+
+        <p class="threshold-label">Threshold: 50ppm.hr</p>
+      </section>
+
+      <!-- ── MAIN CARD ── -->
+      <div class="card">
+
+        <!-- Shift Duration -->
+        <div class="card-section-title">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.8"
+            stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="3" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+          </svg>
+          Shift Duration
+        </div>
+
+        <div class="dropdown-wrapper">
+          <select class="dropdown-select" id="shiftSelect" aria-label="Select shift">
+            <option>Shift A: 10:00am-18:00pm</option>
+            <option>Shift B: 18:00pm-02:00am</option>
+            <option>Shift C: 02:00am-10:00am</option>
+          </select>
+          <div class="dropdown-chevron">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9" />
             </svg>
           </div>
         </div>
-      </div>
-    </header>
 
-    <!-- ── EXPOSURE SECTION ── -->
-    <section class="exposure-section">
-      <h1 class="section-title">Today's Exposure</h1>
+        <!-- Band Status + Expected Expiry -->
+        <div class="band-status-row">
+          <div>
+            <div class="band-status-header">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.8"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7" y="7" width="10" height="10" rx="3" />
+                <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                <path d="M9 17v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2" />
+              </svg>
+              Band Status
+            </div>
+            <div class="band-status-indicator">
+              <span class="status-dot" role="img" aria-label="Active"></span>
+              <span class="status-text">VALID</span>
+            </div>
+          </div>
 
-      <div class="exposure-value">
-        <span class="exposure-number" id="exposureNum">23</span>
-        <span class="exposure-unit">ppm.hr</span>
-      </div>
-
-      <div class="progress-wrapper">
-        <div class="segmented-bar" id="segBar">
-          <div class="threshold-marker" id="thresholdMarker"></div>
+          <div class="expiry-section">
+            <div class="expiry-label">Expected Expiry</div>
+            <div class="expiry-date">12/09/2026</div>
+          </div>
         </div>
-        <div class="progress-labels">
-          <span class="progress-label">0</span>
-          <span class="progress-label">100</span>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button class="action-btn" id="wristbandBtn" aria-label="Wristband Manual">
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M14 9h18l10 10v24a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2z" stroke="#1a1a1a"
+                stroke-width="1.8" fill="none" stroke-linejoin="round" />
+              <polyline points="32 9 32 19 42 19" stroke="#1a1a1a" stroke-width="1.8" stroke-linejoin="round"
+                fill="none" />
+              <path d="M17 39 Q26 44 35 39" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linecap="round" />
+              <line x1="17" y1="24" x2="35" y2="24" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+              <line x1="17" y1="29" x2="30" y2="29" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span class="action-btn-label">Wristband Manual</span>
+          </button>
+
+          <button class="action-btn" id="guidelinesBtn" aria-label="Safety Guidelines">
+            <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M26 13 C22 9 13 9 9 11 L9 40 C13 38 22 38 26 42 Z" stroke="#1a1a1a" stroke-width="1.8"
+                fill="none" stroke-linejoin="round" />
+              <path d="M26 13 C30 9 39 9 43 11 L43 40 C39 38 30 38 26 42 Z" stroke="#1a1a1a" stroke-width="1.8"
+                fill="none" stroke-linejoin="round" />
+              <line x1="26" y1="13" x2="26" y2="42" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round" />
+              <line x1="14" y1="20" x2="21" y2="20" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+              <line x1="14" y1="25" x2="21" y2="25" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+              <line x1="31" y1="20" x2="38" y2="20" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+              <line x1="31" y1="25" x2="38" y2="25" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            <span class="action-btn-label">Safety Guidelines</span>
+          </button>
         </div>
-      </div>
 
-      <p class="threshold-label">Threshold: 50ppm.hr</p>
-    </section>
+      </div><!-- /card -->
 
-    <!-- ── MAIN CARD ── -->
-    <div class="card">
+      <div style="height: 12px;"></div>
+    </div><!-- /scroll-area -->
 
-      <!-- Shift Duration -->
-      <div class="card-section-title">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="3"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-          <line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="16" y1="2" x2="16" y2="6"/>
+    <!-- ── BOTTOM NAVIGATION ── -->
+    <nav class="bottom-nav" role="navigation" aria-label="Main Navigation">
+
+      <!-- Home -->
+      <div class="nav-item" id="navHome" role="button" tabindex="0" aria-label="Home" onclick="setNav('navHome')">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path id="home-fill" d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" stroke="#9CA3AF"
+            stroke-width="2" stroke-linejoin="round" fill="none" />
+          <path id="home-door" d="M9 21V12h6v9" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
         </svg>
-        Shift Duration
       </div>
 
-      <div class="dropdown-wrapper">
-        <select class="dropdown-select" id="shiftSelect" aria-label="Select shift">
-          <option>Shift A: 10:00am-18:00pm</option>
-          <option>Shift B: 18:00pm-02:00am</option>
-          <option>Shift C: 02:00am-10:00am</option>
-        </select>
-        <div class="dropdown-chevron">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </div>
+      <!-- QR Scan -->
+      <div class="nav-item" id="navQR" role="button" tabindex="0" aria-label="QR Scan" onclick="setNav('navQR')">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect id="qr-tl-box" x="2.5" y="2.5" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8" />
+          <rect id="qr-tr-box" x="14" y="2.5" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8" />
+          <rect id="qr-bl-box" x="2.5" y="14" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8" />
+          <rect id="qr-tl-dot" x="4.5" y="4.5" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF" />
+          <rect id="qr-tr-dot" x="16" y="4.5" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF" />
+          <rect id="qr-bl-dot" x="4.5" y="16" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF" />
+          <line id="qr-line1" x1="14" y1="14" x2="21.5" y2="14" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <line id="qr-line2" x1="14" y1="17.5" x2="21.5" y2="17.5" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <line id="qr-line3" x1="14" y1="21.5" x2="21.5" y2="21.5" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <line id="qr-line4" x1="14" y1="14" x2="14" y2="21.5" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <line id="qr-line5" x1="21.5" y1="14" x2="21.5" y2="21.5" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <line id="qr-line6" x1="17.75" y1="14" x2="17.75" y2="17.5" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+        </svg>
       </div>
 
-      <!-- Band Status + Expected Expiry -->
-      <div class="band-status-row">
-        <div>
-          <div class="band-status-header">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="7" y="7" width="10" height="10" rx="3"/>
-              <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-              <path d="M9 17v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-2"/>
-            </svg>
-            Band Status
-          </div>
-          <div class="band-status-indicator">
-            <span class="status-dot" role="img" aria-label="Active"></span>
-            <span class="status-text">VALID</span>
-          </div>
-        </div>
-
-        <div class="expiry-section">
-          <div class="expiry-label">Expected Expiry</div>
-          <div class="expiry-date">12/09/2026</div>
-        </div>
+      <!-- History -->
+      <div class="nav-item" id="navHistory" role="button" tabindex="0" aria-label="History"
+        onclick="setNav('navHistory')">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <polyline id="hist-arr" points="1 4 1 10 7 10" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path id="hist-circle" d="M3.51 15a9 9 0 1 0 .49-4.95" stroke="#9CA3AF" stroke-width="1.8"
+            stroke-linecap="round" />
+          <polyline id="hist-hand" points="12 7 12 12 15 14" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="action-buttons">
-        <button class="action-btn" id="wristbandBtn" aria-label="Wristband Manual">
-          <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M14 9h18l10 10v24a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V11a2 2 0 0 1 2-2z" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-            <polyline points="32 9 32 19 42 19" stroke="#1a1a1a" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
-            <path d="M17 39 Q26 44 35 39" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linecap="round"/>
-            <line x1="17" y1="24" x2="35" y2="24" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="17" y1="29" x2="30" y2="29" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-          <span class="action-btn-label">Wristband Manual</span>
-        </button>
+    </nav>
+  </div><!-- /phone -->
 
-        <button class="action-btn" id="guidelinesBtn" aria-label="Safety Guidelines">
-          <svg width="52" height="52" viewBox="0 0 52 52" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M26 13 C22 9 13 9 9 11 L9 40 C13 38 22 38 26 42 Z" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-            <path d="M26 13 C30 9 39 9 43 11 L43 40 C39 38 30 38 26 42 Z" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-            <line x1="26" y1="13" x2="26" y2="42" stroke="#1a1a1a" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="14" y1="20" x2="21" y2="20" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="14" y1="25" x2="21" y2="25" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="31" y1="20" x2="38" y2="20" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="31" y1="25" x2="38" y2="25" stroke="#1a1a1a" stroke-width="1.6" stroke-linecap="round"/>
-          </svg>
-          <span class="action-btn-label">Safety Guidelines</span>
-        </button>
-      </div>
+  <script>
+    /* ── Build segmented progress bar with gradient fade ── */
+    (function () {
+      const bar = document.getElementById('segBar');
+      const total = 50;
+      const value = 23;
+      const max = 100;
+      const filledCount = Math.round((value / max) * total);
+      const marker = document.getElementById('thresholdMarker');
 
-    </div><!-- /card -->
+      for (let i = 0; i < total; i++) {
+        const seg = document.createElement('div');
+        seg.className = 'seg';
 
-    <div style="height: 12px;"></div>
-  </div><!-- /scroll-area -->
-
-  <!-- ── BOTTOM NAVIGATION ── -->
-  <nav class="bottom-nav" role="navigation" aria-label="Main Navigation">
-
-    <!-- Home -->
-    <div class="nav-item" id="navHome" role="button" tabindex="0" aria-label="Home" onclick="setNav('navHome')">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path id="home-fill" d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" stroke="#9CA3AF" stroke-width="2" stroke-linejoin="round" fill="none"/>
-        <path id="home-door" d="M9 21V12h6v9" stroke="#9CA3AF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-
-    <!-- QR Scan -->
-    <div class="nav-item" id="navQR" role="button" tabindex="0" aria-label="QR Scan" onclick="setNav('navQR')">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect id="qr-tl-box" x="2.5" y="2.5" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8"/>
-        <rect id="qr-tr-box" x="14" y="2.5" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8"/>
-        <rect id="qr-bl-box" x="2.5" y="14" width="7.5" height="7.5" rx="1.2" stroke="#9CA3AF" stroke-width="1.8"/>
-        <rect id="qr-tl-dot" x="4.5" y="4.5" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF"/>
-        <rect id="qr-tr-dot" x="16" y="4.5" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF"/>
-        <rect id="qr-bl-dot" x="4.5" y="16" width="3.5" height="3.5" rx="0.5" fill="#9CA3AF"/>
-        <line id="qr-line1" x1="14" y1="14" x2="21.5" y2="14" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <line id="qr-line2" x1="14" y1="17.5" x2="21.5" y2="17.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <line id="qr-line3" x1="14" y1="21.5" x2="21.5" y2="21.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <line id="qr-line4" x1="14" y1="14" x2="14" y2="21.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <line id="qr-line5" x1="21.5" y1="14" x2="21.5" y2="21.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <line id="qr-line6" x1="17.75" y1="14" x2="17.75" y2="17.5" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-      </svg>
-    </div>
-
-    <!-- History -->
-    <div class="nav-item" id="navHistory" role="button" tabindex="0" aria-label="History" onclick="setNav('navHistory')">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <polyline id="hist-arr" points="1 4 1 10 7 10" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <path id="hist-circle" d="M3.51 15a9 9 0 1 0 .49-4.95" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round"/>
-        <polyline id="hist-hand" points="12 7 12 12 15 14" stroke="#9CA3AF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </div>
-
-  </nav>
-</div><!-- /phone -->
-
-<script>
-  /* ── Build segmented progress bar with gradient fade ── */
-  (function() {
-    const bar = document.getElementById('segBar');
-    const total = 50;
-    const value = 23;
-    const max = 100;
-    const filledCount = Math.round((value / max) * total);
-    const marker = document.getElementById('thresholdMarker');
-
-    for (let i = 0; i < total; i++) {
-      const seg = document.createElement('div');
-      seg.className = 'seg';
-
-      if (i < filledCount) {
-        const ratio = i / filledCount;
-        if (ratio < 0.4) {
-          seg.style.background = '#1e6fff';
-        } else if (ratio < 0.65) {
-          seg.style.background = '#3d8fff';
-        } else if (ratio < 0.82) {
-          seg.style.background = '#60aaff';
-        } else {
-          const fade = (ratio - 0.82) / 0.18;
-          const r = Math.round(96 + fade * 100);
-          const g = Math.round(170 + fade * 25);
-          const b = 255;
-          seg.style.background = `rgb(${r},${g},${b})`;
-          seg.style.opacity = (1 - fade * 0.35).toFixed(2);
+        if (i < filledCount) {
+          const ratio = i / filledCount;
+          if (ratio < 0.4) {
+            seg.style.background = '#1e6fff';
+          } else if (ratio < 0.65) {
+            seg.style.background = '#3d8fff';
+          } else if (ratio < 0.82) {
+            seg.style.background = '#60aaff';
+          } else {
+            const fade = (ratio - 0.82) / 0.18;
+            const r = Math.round(96 + fade * 100);
+            const g = Math.round(170 + fade * 25);
+            const b = 255;
+            seg.style.background = `rgb(${r},${g},${b})`;
+            seg.style.opacity = (1 - fade * 0.35).toFixed(2);
+          }
         }
+
+        bar.insertBefore(seg, marker);
+      }
+    })();
+
+    /* ── Bottom nav state management ── */
+    const NAV_ACTIVE = '#2b96ff';
+    const NAV_INACTIVE = '#9CA3AF';
+
+    const navConfig = {
+      navHome: {
+        strokes: ['#home-fill', '#home-door'],
+        fills: []
+      },
+      navQR: {
+        strokes: ['#qr-tl-box', '#qr-tr-box', '#qr-bl-box', '#qr-line1', '#qr-line2', '#qr-line3', '#qr-line4', '#qr-line5', '#qr-line6'],
+        fills: ['#qr-tl-dot', '#qr-tr-dot', '#qr-bl-dot']
+      },
+      navHistory: {
+        strokes: ['#hist-arr', '#hist-circle', '#hist-hand'],
+        fills: []
+      }
+    };
+
+    let currentNav = null;
+
+    function setNav(id) {
+      if (currentNav) {
+        const prev = navConfig[currentNav];
+        prev.strokes.forEach(sel => {
+          const el = document.querySelector(sel);
+          if (el) el.setAttribute('stroke', NAV_INACTIVE);
+        });
+        prev.fills.forEach(sel => {
+          const el = document.querySelector(sel);
+          if (el) el.setAttribute('fill', NAV_INACTIVE);
+        });
+        document.getElementById(currentNav).style.background = '';
       }
 
-      bar.insertBefore(seg, marker);
-    }
-  })();
-
-  /* ── Bottom nav state management ── */
-  const NAV_ACTIVE = '#2b96ff';
-  const NAV_INACTIVE = '#9CA3AF';
-
-  const navConfig = {
-    navHome: {
-      strokes: ['#home-fill', '#home-door'],
-      fills: []
-    },
-    navQR: {
-      strokes: ['#qr-tl-box','#qr-tr-box','#qr-bl-box','#qr-line1','#qr-line2','#qr-line3','#qr-line4','#qr-line5','#qr-line6'],
-      fills: ['#qr-tl-dot','#qr-tr-dot','#qr-bl-dot']
-    },
-    navHistory: {
-      strokes: ['#hist-arr','#hist-circle','#hist-hand'],
-      fills: []
-    }
-  };
-
-  let currentNav = null;
-
-  function setNav(id) {
-    if (currentNav) {
-      const prev = navConfig[currentNav];
-      prev.strokes.forEach(sel => {
+      currentNav = id;
+      const next = navConfig[id];
+      next.strokes.forEach(sel => {
         const el = document.querySelector(sel);
-        if (el) el.setAttribute('stroke', NAV_INACTIVE);
+        if (el) el.setAttribute('stroke', NAV_ACTIVE);
       });
-      prev.fills.forEach(sel => {
+      next.fills.forEach(sel => {
         const el = document.querySelector(sel);
-        if (el) el.setAttribute('fill', NAV_INACTIVE);
+        if (el) el.setAttribute('fill', NAV_ACTIVE);
       });
-      document.getElementById(currentNav).style.background = '';
+      document.getElementById(id).style.background = 'rgba(43, 150, 255, 0.10)';
     }
 
-    currentNav = id;
-    const next = navConfig[id];
-    next.strokes.forEach(sel => {
-      const el = document.querySelector(sel);
-      if (el) el.setAttribute('stroke', NAV_ACTIVE);
-    });
-    next.fills.forEach(sel => {
-      const el = document.querySelector(sel);
-      if (el) el.setAttribute('fill', NAV_ACTIVE);
-    });
-    document.getElementById(id).style.background = 'rgba(43, 150, 255, 0.10)';
-  }
+    setNav('navHome');
 
-  setNav('navHome');
-
-  /* ── Button micro-interaction ── */
-  document.querySelectorAll('.action-btn').forEach(btn => {
-    btn.addEventListener('pointerdown', () => {
-      btn.style.transform = 'scale(0.94)';
-      btn.style.opacity = '0.85';
-    });
-    ['pointerup', 'pointerleave'].forEach(evt => {
-      btn.addEventListener(evt, () => {
-        btn.style.transform = '';
-        btn.style.opacity = '';
+    /* ── Button micro-interaction ── */
+    document.querySelectorAll('.action-btn').forEach(btn => {
+      btn.addEventListener('pointerdown', () => {
+        btn.style.transform = 'scale(0.94)';
+        btn.style.opacity = '0.85';
+      });
+      ['pointerup', 'pointerleave'].forEach(evt => {
+        btn.addEventListener(evt, () => {
+          btn.style.transform = '';
+          btn.style.opacity = '';
+        });
       });
     });
-  });
 
-  /* ── Keyboard nav support ── */
-  document.querySelectorAll('.nav-item').forEach(item => {
-    item.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        item.click();
-      }
+    /* ── Keyboard nav support ── */
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          item.click();
+        }
+      });
     });
-  });
-</script>
+  </script>
 </body>
+
 </html>
