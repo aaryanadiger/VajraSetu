@@ -165,12 +165,12 @@ export async function extractRegionsFromImage(imageUri: string): Promise<Capture
 }
 
 function simulatedCapture(): CaptureRegions {
-  // Simulates a wristband that has been exposed to ~20 ppm·hr
-  // Light-blue → light-tan shift typical of partial CuS formation
+  // Provisional unexposed CuSO4 baseline from the supplied sample photograph.
+  // Real values are supplied by the native OpenCV extraction path.
   return {
-    referenceRGB: { r: 240, g: 248, b: 255 },   // near-white reference
-    expiryRGB:   { r: 230, g: 225, b: 200 },     // valid FeSO4 dot (slight yellowing)
-    sensingRGB:  { r: 180, g: 170, b: 140 },     // partial brown = mid exposure
+    referenceRGB: { r: 245, g: 245, b: 245 },
+    expiryRGB: { r: 0, g: 0, b: 0 },
+    sensingRGB: { r: 174, g: 190, b: 181 },
   };
 }
 

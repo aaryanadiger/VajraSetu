@@ -1,17 +1,16 @@
 /**
  * CaptureFlowScreen — PRD §4
  *
- * Flow: Live camera → (auto-capture on frame-lock) → Processing → Result
+ * Flow: Live camera → user-confirmed capture → Processing → Result
  *
- * §4.1 Camera: torch toggle, auto-capture via frame-steady detection (~0.8s dwell),
- *              lock-on ring animation, shutter flash, no shutter button.
+ * §4.1 Camera: torch toggle, guided alignment, lock-on ring animation and shutter flash.
  * §4.2 Processing: one progress bar, honest real-pipeline status labels only.
  * §4.3 Result: invalid-band first, then risk badge + plain-language explanation,
  *              "View on graph" link back to Home. No team context.
  *
  * Algorithm untouched: v1 §6.1–6.4 pipeline (perspective → CIELAB → ΔE → TWA → Index)
  */
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
   ScrollView, Animated as RNAnimated,
@@ -51,6 +50,7 @@ const PIPELINE_STAGES = [
   { key: 'step_index',       weight: 0.10 },
   { key: 'step_risk',        weight: 0.10 },
 ] as const;
+const DEFAULT_SHIFT_HOURS = 8;
 
 function riskToBadge(band: RiskBand): 'success' | 'warning' | 'danger' | 'neutral' {
   return { low: 'success', elevated: 'warning', high: 'danger', invalid: 'neutral' }[band] as any ?? 'neutral';
@@ -64,16 +64,12 @@ export const CaptureFlowScreen: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [torchOn, setTorchOn] = useState(false);
-  const [shiftHours, setShiftHours] = useState(8);
   const [stageIndex, setStageIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<ProcessingResult | null>(null);
   const [captureFlash, setCaptureFlash] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
 
-  // Frame-lock state for auto-capture
-  const steadyCount = useRef(0);
-  const steadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const capturing = useRef(false);
   const cameraRef = useRef<CameraView>(null);
 
@@ -92,25 +88,6 @@ export const CaptureFlowScreen: React.FC = () => {
   useEffect(() => {
     setTorchOn(Boolean(route.params?.initialTorch));
   }, [route.params?.initialTorch]);
-
-  // ── Frame-lock auto-capture ────────────────────────────────────────────────
-  // Called on each camera frame (mocked via interval; in a real build this would
-  // hook into the CameraView onCameraReady or use a frame processor).
-  // For hackathon: simulate frame-lock detection with a steady-hold timer.
-  useEffect(() => {
-    if (step !== 'camera' || !cameraReady || !settings || capturing.current) return;
-
-    // Start a dwell timer — fires after autoCaptureDelayMs if uninterrupted.
-    // In a real build, reset on significant frame motion; here we fire unconditionally
-    // after the delay to demonstrate the UX pattern.
-    const dwellTimer = setTimeout(() => {
-      if (step === 'camera' && !capturing.current) {
-        triggerLockAndCapture();
-      }
-    }, theme.motion.autoCaptureDelayMs);
-
-    return () => clearTimeout(dwellTimer);
-  }, [step]);
 
   function triggerLockAndCapture() {
     if (!cameraReady || !settings || capturing.current) return;
@@ -167,7 +144,7 @@ export const CaptureFlowScreen: React.FC = () => {
     }
 
     const regions = await extractRegionsFromImage(imageUri);
-    const res = await runExposurePipeline(regions, shiftHours, settings);
+    const res = await runExposurePipeline(regions, DEFAULT_SHIFT_HOURS, settings);
     setResult(res);
     setProgress(1);
 
@@ -233,8 +210,6 @@ export const CaptureFlowScreen: React.FC = () => {
             onCameraReady={() => setCameraReady(true)}
             onCameraError={() => setCameraReady(false)}
             ringStyle={ringStyle}
-            shiftHours={shiftHours}
-            onShiftHoursChange={setShiftHours}
             onManualCapture={triggerLockAndCapture}
             t={t}
           />
@@ -264,8 +239,6 @@ export const CaptureFlowScreen: React.FC = () => {
 
 // ── §4.1 Camera Step ──────────────────────────────────────────────────────────
 
-const SHIFT_OPTIONS = [6, 8, 10, 12] as const;
-
 const CameraStep: React.FC<{
   cameraRef: React.RefObject<CameraView | null>;
   torchOn: boolean;
@@ -273,11 +246,9 @@ const CameraStep: React.FC<{
   onCameraReady: () => void;
   onCameraError: () => void;
   ringStyle: any;
-  shiftHours: number;
-  onShiftHoursChange: (h: number) => void;
   onManualCapture: () => void;
   t: (k: string) => string;
-}> = ({ cameraRef, torchOn, onTorchToggle, onCameraReady, onCameraError, ringStyle, shiftHours, onShiftHoursChange, onManualCapture, t }) => (
+}> = ({ cameraRef, torchOn, onTorchToggle, onCameraReady, onCameraError, ringStyle, onManualCapture, t }) => (
   <View style={{ flex: 1 }}>
     <CameraView
       ref={cameraRef}
@@ -312,27 +283,19 @@ const CameraStep: React.FC<{
       {/* Instruction banner */}
       <View style={styles.instrBanner}>
         <Text style={styles.instrText}>{t('scan.alignInstruction')}</Text>
-        <Text style={styles.holdText}>{t('scan.holdSteady')}</Text>
+        <Text style={styles.holdText}>Keep the full wristband inside the frame.</Text>
       </View>
 
-      {/* Shift duration picker (compact) */}
-      <View style={styles.shiftPickerRow}>
-        <Text style={styles.shiftPickerLabel}>{t('scan.shiftHours')}</Text>
-        <View style={styles.shiftPills}>
-          {SHIFT_OPTIONS.map(h => (
-            <TouchableOpacity
-              key={h}
-              style={[styles.shiftPill, shiftHours === h && styles.shiftPillActive]}
-              onPress={() => onShiftHoursChange(h)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.shiftPillText, shiftHours === h && styles.shiftPillTextActive]}>
-                {t('scan.shiftHoursUnit').replace('{{hours}}', String(h))}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
+      <TouchableOpacity
+        style={styles.captureNowBtn}
+        onPress={onManualCapture}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel="Analyze wristband"
+      >
+        <Ionicons name="camera" size={18} color="#fff" />
+        <Text style={styles.captureNowText}>Analyze wristband</Text>
+      </TouchableOpacity>
     </View>
   </View>
 );
@@ -577,32 +540,21 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
     textAlign: 'center',
   },
-  shiftPickerRow: {
+  captureNowBtn: {
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    borderRadius: theme.radii.md,
-    padding: theme.spacing.md,
+    gap: theme.spacing.sm,
+    backgroundColor: theme.colors.primary,
+    borderRadius: theme.radii.btn,
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.xl,
   },
-  shiftPickerLabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.xs,
-    color: 'rgba(255,255,255,0.75)',
+  captureNowText: {
+    fontFamily: theme.typography.family.semiBold,
+    fontSize: theme.typography.size.md,
+    color: '#fff',
   },
-  shiftPills: { flexDirection: 'row', gap: theme.spacing.xs },
-  shiftPill: {
-    paddingVertical: 4, paddingHorizontal: 10,
-    borderRadius: theme.radii.dropdown,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-  },
-  shiftPillActive: { backgroundColor: theme.colors.primary },
-  shiftPillText: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.xs,
-    color: 'rgba(255,255,255,0.75)',
-  },
-  shiftPillTextActive: { color: '#fff' },
 
   // Processing
   processingContainer: {

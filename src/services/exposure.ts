@@ -13,10 +13,25 @@
 import { AppSettings } from '../types';
 import { ProcessingResult, RiskBand, H2SIndex } from '../types';
 import { isBandValid, deltaEToPpmHr, getSaturationDeltaE } from './calibration';
-import { computeDeltaE, CaptureRegions } from './imageProcessing';
+import { computeDeltaE, CaptureRegions, RGB } from './imageProcessing';
 
-// Reference white LAB for ΔE computation (the printed unexposed reference patch)
-// This is computed live from the captured reference region, not hardcoded.
+// Provisional CuSO4 baseline sampled from the supplied unexposed pad photograph.
+// Replace this with lab-measured values once controlled exposure samples exist.
+const CUSO4_UNEXPOSED_RGB: RGB = { r: 174, g: 190, b: 181 };
+const TARGET_WHITE_RGB: RGB = { r: 245, g: 245, b: 245 };
+
+function clampChannel(value: number): number {
+  return Math.max(0, Math.min(255, value));
+}
+
+/** Normalise the sensing-pad colour against the captured white reference. */
+function whiteBalance(sample: RGB, capturedWhite: RGB): RGB {
+  return {
+    r: clampChannel(sample.r * TARGET_WHITE_RGB.r / Math.max(capturedWhite.r, 1)),
+    g: clampChannel(sample.g * TARGET_WHITE_RGB.g / Math.max(capturedWhite.g, 1)),
+    b: clampChannel(sample.b * TARGET_WHITE_RGB.b / Math.max(capturedWhite.b, 1)),
+  };
+}
 
 // ─── Band validity gate (Step A) ─────────────────────────────────────────────
 
@@ -136,26 +151,12 @@ export async function runExposurePipeline(
   settings: AppSettings,
   curveVersion = 'v1'
 ): Promise<ProcessingResult> {
-  // Compute ΔE for both regions against the captured reference patch
-  const expiryDeltaE = computeDeltaE(regions.expiryRGB, regions.referenceRGB);
-  const sensingDeltaE = computeDeltaE(regions.sensingRGB, regions.referenceRGB);
-
-  // Step A: Band validity gate
-  const bandValid = validateBand(expiryDeltaE, curveVersion);
-
-  if (!bandValid) {
-    return {
-      band_valid: false,
-      expiry_delta_e: expiryDeltaE,
-      sensing_delta_e: sensingDeltaE,
-      cumulative_ppm_hr: 0,
-      twa_ppm: 0,
-      h2s_index: 0,
-      index_mode: 'estimated_single_sample',
-      risk_band: 'invalid',
-      calibration_curve_version: curveVersion,
-    };
-  }
+  // FeSO4 validity is intentionally disabled for this CuSO4-only prototype.
+  // The white reference corrects lighting; the CuSO4 pad is compared to its
+  // own unexposed pale blue/green baseline to measure H2S colour change.
+  const expiryDeltaE = 0;
+  const correctedSensing = whiteBalance(regions.sensingRGB, regions.referenceRGB);
+  const sensingDeltaE = computeDeltaE(correctedSensing, CUSO4_UNEXPOSED_RGB);
 
   // Step B1: TWA
   const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);

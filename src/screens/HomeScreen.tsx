@@ -68,7 +68,6 @@ export const HomeScreen: React.FC = () => {
   const [dayRange, setDayRange] = useState<DayRange>(7);
   const [viewMode, setViewMode] = useState<ViewMode>('twa');
   const [selectedReading, setSelectedReading] = useState<Reading | null>(null);
-  const [flashOnScan, setFlashOnScan] = useState(false);
   const [guide, setGuide] = useState<'manual' | 'safety' | null>(null);
   const sheetY = useSharedValue(0);
 
@@ -103,10 +102,7 @@ export const HomeScreen: React.FC = () => {
   const oel = settings?.oel_twa_ppm ?? 5;
   const todayExposure = latest?.cumulative_ppm_hr ?? 0;
 
-  const openScan = () => navigation.navigate('Scan', {
-    screen: 'CaptureMain',
-    params: { initialTorch: flashOnScan },
-  });
+  const openScan = () => navigation.navigate('Scan');
 
   // Bottom sheet
   const sheetStyle = useAnimatedStyle(() => ({
@@ -238,20 +234,6 @@ export const HomeScreen: React.FC = () => {
             <Ionicons name="chevron-forward" size={20} color={theme.colors.primary} />
           </TouchableOpacity>
         </Animated.View>
-
-        <View style={styles.flashRow}>
-          <Text style={styles.flashLabel}>Flash for scan</Text>
-          <TouchableOpacity
-            style={[styles.flashToggle, flashOnScan && styles.flashToggleActive]}
-            onPress={() => setFlashOnScan(value => !value)}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: flashOnScan }}
-            accessibilityLabel="Use flash when opening scanner"
-          >
-            <Ionicons name={flashOnScan ? 'flash' : 'flash-off'} size={17} color={flashOnScan ? '#fff' : theme.colors.text.secondary} />
-            <Text style={[styles.flashToggleText, flashOnScan && styles.flashToggleTextActive]}>{flashOnScan ? 'On' : 'Off'}</Text>
-          </TouchableOpacity>
-        </View>
 
         <View style={styles.quickActions}>
           <QuickAction icon="document-text-outline" label="Wristband Manual" onPress={() => setGuide('manual')} />
@@ -485,12 +467,6 @@ const styles = StyleSheet.create({
     color: theme.colors.primary,
     letterSpacing: theme.typography.letterSpacing.normal,
   },
-  flashRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: theme.spacing.sm, marginTop: -4, marginBottom: theme.spacing.xl },
-  flashLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary },
-  flashToggle: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 10, borderRadius: theme.radii.full, backgroundColor: '#edf2fb' },
-  flashToggleActive: { backgroundColor: theme.colors.primary },
-  flashToggleText: { fontFamily: theme.typography.family.semiBold, fontSize: 12, color: theme.colors.text.secondary },
-  flashToggleTextActive: { color: '#fff' },
   quickActions: { flexDirection: 'row', gap: theme.spacing.md, marginBottom: theme.spacing.xl },
   quickAction: { flex: 1, minHeight: 118, backgroundColor: '#b8ddff', borderRadius: theme.radii.card, justifyContent: 'center', alignItems: 'center', gap: theme.spacing.sm, padding: theme.spacing.md },
   quickActionText: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.primary, textAlign: 'center' },
