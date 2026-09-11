@@ -1,0 +1,22 @@
+{
+  "version": "v1",
+  "description": "PLACEHOLDER — control points must be replaced with real lab calibration data from the CuSO4+glycerol+water wristband. ΔE values are approximate stand-ins only. See PRD §6.3.",
+  "expiry_valid_range": {
+    "min": 0,
+    "max": 8,
+    "description": "FeSO4 expiry dot ΔE must be within this range to be considered VALID. Calibrate empirically."
+  },
+  "sensing_saturation_delta_e": 55,
+  "points": [
+    { "deltaE": 0,  "cumulative_ppm_hr": 0.0,  "_note": "unexposed/reference white" },
+    { "deltaE": 3,  "cumulative_ppm_hr": 0.5  },
+    { "deltaE": 7,  "cumulative_ppm_hr": 2.0  },
+    { "deltaE": 12, "cumulative_ppm_hr": 5.0  },
+    { "deltaE": 18, "cumulative_ppm_hr": 10.0 },
+    { "deltaE": 25, "cumulative_ppm_hr": 20.0 },
+    { "deltaE": 33, "cumulative_ppm_hr": 35.0 },
+    { "deltaE": 40, "cumulative_ppm_hr": 50.0 },
+    { "deltaE": 47, "cumulative_ppm_hr": 70.0 },
+    { "deltaE": 55, "cumulative_ppm_hr": 90.0, "_note": "near-saturation" }
+  ]
+}

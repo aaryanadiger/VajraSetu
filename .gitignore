@@ -31,6 +31,8 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
+.env.*
 .env*.local
 
 # typescript
@@ -39,3 +41,27 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# ── Vajra-Setu specific ──────────────────────────────────────────────
+# Raw captured wristband images (stored locally on device, never committed)
+/raw_captures/
+*.jpg
+*.jpeg
+*.png.tmp
+
+# SQLite database files (offline data — local only, never committed)
+*.db
+*.db-shm
+*.db-wal
+
+# Calibration outputs (generated from lab data — manage separately)
+/calibration/generated/
+/calibration/*.lab.json
+
+# CSV compliance exports (sensitive worker data — do not commit)
+/exports/
+*.csv
+
+# Editor & IDE
+.vscode/settings.json
+.idea/
