@@ -5,15 +5,13 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
+import { useSarvamText } from '../hooks/useSarvamText';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
-import { getReadingsByWorker, getWorkerById, getAllReadingsToday } from '../services/db';
+import { getAccountProfile, getReadingsByWorker } from '../services/db';
 import { Reading, RiskBand } from '../types';
-import { RosterStackParamList } from '../navigation/AppNavigator';
-
-type Route = RouteProp<RosterStackParamList, 'WorkerHistory'>;
 
 function riskToBadge(band: RiskBand): 'success' | 'warning' | 'danger' | 'neutral' {
   const map = { low: 'success', elevated: 'warning', high: 'danger', invalid: 'neutral' } as const;
@@ -31,26 +29,21 @@ function formatTime(iso: string): string {
 }
 
 export const WorkerHistoryScreen: React.FC = () => {
-  const route = useRoute<any>();
   const navigation = useNavigation();
-  const workerId = route.params?.workerId;
-  const workerName = route.params?.workerName ?? 'Site All Workers';
+  const t = useSarvamText();
+  const [workerName, setWorkerName] = useState('My exposure');
   const [readings, setReadings] = useState<Reading[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (workerId) {
-      getReadingsByWorker(workerId).then(r => {
-        setReadings(r);
-        setLoading(false);
-      });
-    } else {
-      getAllReadingsToday().then(r => {
-        setReadings(r);
-        setLoading(false);
-      });
-    }
-  }, [workerId]);
+    getAccountProfile().then(async profile => {
+      if (!profile) { setLoading(false); return; }
+      setWorkerName(profile.name);
+      const r = await getReadingsByWorker(profile.worker_id);
+      setReadings(r);
+      setLoading(false);
+    });
+  }, []);
 
   const validReadings = readings.filter(r => r.band_valid);
   const avgTWA = validReadings.length
@@ -72,7 +65,7 @@ export const WorkerHistoryScreen: React.FC = () => {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.workerName}>{workerName}</Text>
-          <Text style={styles.historyLabel}>Exposure History</Text>
+          <Text style={styles.historyLabel}>{t('Exposure history')}</Text>
         </View>
       </View>
 
@@ -88,18 +81,18 @@ export const WorkerHistoryScreen: React.FC = () => {
             <>
               {/* Summary stats */}
               <Card style={styles.summaryCard}>
-                <Text style={styles.summaryTitle}>Summary ({readings.length} readings)</Text>
+                <Text style={styles.summaryTitle}>{t('Summary')} ({readings.length} {t('readings')})</Text>
                 <View style={styles.statsRow}>
-                  <StatBox label="Avg TWA" value={`${avgTWA.toFixed(3)} ppm`} />
-                  <StatBox label="Peak TWA" value={`${maxTWA.toFixed(3)} ppm`} alert={maxTWA >= 5} />
-                  <StatBox label="High-Risk Days" value={String(highRiskCount)} alert={highRiskCount > 0} />
+                  <StatBox label={t('Average TWA')} value={`${avgTWA.toFixed(3)} ppm`} />
+                  <StatBox label={t('Peak TWA')} value={`${maxTWA.toFixed(3)} ppm`} alert={maxTWA >= 5} />
+                  <StatBox label={t('High-risk days')} value={String(highRiskCount)} alert={highRiskCount > 0} />
                 </View>
               </Card>
 
               {/* Mini trend chart (last 7 valid readings) */}
               {validReadings.length >= 2 && (
                 <Card style={styles.chartCard}>
-                  <Text style={styles.chartTitle}>TWA Trend (last {Math.min(7, validReadings.length)} readings)</Text>
+                  <Text style={styles.chartTitle}>{t('TWA trend')} ({t('last')} {Math.min(7, validReadings.length)} {t('readings')})</Text>
                   <MiniBarChart readings={validReadings.slice(0, 7).reverse()} />
                 </Card>
               )}
@@ -107,13 +100,14 @@ export const WorkerHistoryScreen: React.FC = () => {
               {readings.length === 0 && (
                 <View style={styles.emptyContainer}>
                   <Ionicons name="time-outline" size={48} color={theme.colors.text.light} />
-                  <Text style={styles.emptyTitle}>No readings yet</Text>
-                  <Text style={styles.emptyBody}>Scan this worker's wristband to start tracking exposure.</Text>
+                  <Text style={styles.emptyTitle}>{t('No readings yet')}</Text>
+                  <Text style={styles.emptyBody}>{t('Scan your wristband to start tracking your exposure.')}</Text>
                 </View>
               )}
 
+
               {readings.length > 0 && (
-                <Text style={styles.timelineLabel}>Reading Timeline</Text>
+                <Text style={styles.timelineLabel}>{t('Reading timeline')}</Text>
               )}
             </>
           )}
@@ -153,10 +147,12 @@ const MiniBarChart: React.FC<{ readings: Reading[] }> = ({ readings }) => {
   );
 };
 
+
 // ─── Reading Card ─────────────────────────────────────────────────────────────
 
-const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => (
-  <View style={styles.readingCard}>
+const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => {
+  const t = useSarvamText();
+  return <View style={styles.readingCard}>
     <View style={styles.readingDateCol}>
       <Text style={styles.readingDate}>{formatDate(reading.captured_at)}</Text>
       <Text style={styles.readingTime}>{formatTime(reading.captured_at)}</Text>
@@ -167,12 +163,12 @@ const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => (
         <>
           <View style={styles.readingMetrics}>
             <Text style={styles.readingMetricVal}>{reading.twa_ppm.toFixed(3)}</Text>
-            <Text style={styles.readingMetricUnit}> ppm TWA</Text>
+            <Text style={styles.readingMetricUnit}> {t('ppm TWA')}</Text>
           </View>
-          <Text style={styles.readingIndexText}>Index: {reading.h2s_index.toFixed(1)}</Text>
+          <Text style={styles.readingIndexText}>{t('Index')}: {reading.h2s_index.toFixed(1)}</Text>
         </>
       ) : (
-        <Text style={styles.invalidText}>Band Invalid — No reading</Text>
+        <Text style={styles.invalidText}>{t('Band invalid — no reading')}</Text>
       )}
     </View>
 
@@ -180,8 +176,8 @@ const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => (
       label={reading.risk_band.toUpperCase()}
       variant={riskToBadge(reading.risk_band)}
     />
-  </View>
-);
+  </View>;
+};
 
 // ─── Stat Box ─────────────────────────────────────────────────────────────────
 

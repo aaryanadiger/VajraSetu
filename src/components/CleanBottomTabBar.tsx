@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import Svg, { Path, Rect, Line, Polyline } from 'react-native-svg';
+import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme } from '../theme';
 
@@ -10,7 +11,8 @@ const INACTIVE_COLOR = '#9CA3AF';
 export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   return (
     <View style={styles.container}>
-      <View style={styles.navBar}>
+      <BlurView intensity={42} tint="light" style={styles.navBar}>
+        <View pointerEvents="none" style={styles.glassHighlight} />
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
           const color = isFocused ? ACTIVE_COLOR : INACTIVE_COLOR;
@@ -157,7 +159,7 @@ export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigati
             </TouchableOpacity>
           );
         })}
-      </View>
+      </BlurView>
     </View>
   );
 };
@@ -165,37 +167,42 @@ export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigati
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    bottom: Platform.OS === 'ios' ? 14 : 12,
+    left: 16,
+    right: 16,
     backgroundColor: 'transparent',
   },
   navBar: {
-    backgroundColor: '#ffffff',
-    borderTopWidth: 1,
-    borderColor: '#EAECF0',
+    backgroundColor: 'rgba(255, 255, 255, 0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.94)',
+    borderRadius: 26,
+    overflow: 'hidden',
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 12,
+    paddingVertical: 9,
     shadowColor: '#101828',
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  glassHighlight: {
+    position: 'absolute', top: 0, left: 18, right: 18, height: 1,
+    backgroundColor: 'rgba(255,255,255,0.9)',
   },
   navItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 5,
+    paddingVertical: 7,
     gap: 2,
-    borderRadius: 12,
-    marginHorizontal: 8,
+    borderRadius: 18,
+    marginHorizontal: 5,
   },
   navItemActive: {
-    backgroundColor: '#F0F7FF',
+    backgroundColor: 'rgba(225, 241, 255, 0.88)',
   },
   navLabel: {
     fontFamily: theme.typography.family.medium,

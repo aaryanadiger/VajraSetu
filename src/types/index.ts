@@ -34,6 +34,15 @@ export interface Worker {
   created_at: string;
 }
 
+/** The single device owner. Their worker record owns every personal scan. */
+export interface AccountProfile {
+  id: number;
+  name: string;
+  worker_code: string;
+  site_id: string;
+  worker_id: string;
+}
+
 export interface Wristband {
   id: string;
   batch_id: string;
@@ -81,23 +90,31 @@ export interface ShiftWithReading extends Shift {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
-  oel_twa_ppm: number;         // default 5 (India)
-  oel_stel_ppm: number;        // default 10
-  oel_ceiling_ppm: number;     // default 10
-  risk_elevated_twa: number;   // TWA threshold for Elevated
-  risk_high_twa: number;       // TWA threshold for High
+  oel_twa_ppm: number;         // Compatibility field: OSHA general-industry ceiling
+  oel_stel_ppm: number;        // Compatibility field: OSHA general-industry ceiling
+  oel_ceiling_ppm: number;     // OSHA general-industry ceiling
+  risk_elevated_twa: number;   // Internal early-warning threshold
+  risk_high_twa: number;       // OSHA ceiling threshold
   risk_elevated_index: number;
   risk_high_index: number;
   calibration_curve_version: string;
   unit: 'ppm_hr' | 'mg_m3_hr';
 }
 
+/** Fixed H₂S reference values. Workers must never be able to change these. */
+export const OSHA_H2S_LIMITS = {
+  generalIndustryCeilingPpm: 20,
+  maximumPeakPpm: 50,
+  maximumPeakMinutes: 10,
+  earlyWarningPpm: 10,
+} as const;
+
 export const DEFAULT_SETTINGS: AppSettings = {
-  oel_twa_ppm: 5,
-  oel_stel_ppm: 10,
-  oel_ceiling_ppm: 10,
-  risk_elevated_twa: 2.5,
-  risk_high_twa: 5,
+  oel_twa_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+  oel_stel_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+  oel_ceiling_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+  risk_elevated_twa: OSHA_H2S_LIMITS.earlyWarningPpm,
+  risk_high_twa: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
   risk_elevated_index: 10,
   risk_high_index: 25,
   calibration_curve_version: 'v1',

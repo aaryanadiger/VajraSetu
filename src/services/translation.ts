@@ -1,4 +1,6 @@
-export type AppLanguage = 'bho-IN' | 'hi-IN' | 'mr-IN' | 'kn-IN';
+import { getCachedTranslation, saveCachedTranslation } from './db';
+
+export type AppLanguage = 'en-IN' | 'bho-IN' | 'hi-IN' | 'mr-IN' | 'kn-IN';
 
 export interface LanguageOption {
   code: AppLanguage;
@@ -8,13 +10,14 @@ export interface LanguageOption {
 }
 
 export const LANGUAGE_OPTIONS: LanguageOption[] = [
+  { code: 'en-IN', label: 'English', nativeLabel: 'English', sarvamSupported: true },
   { code: 'bho-IN', label: 'Bhojpuri', nativeLabel: 'भोजपुरी', sarvamSupported: false },
   { code: 'hi-IN', label: 'Hindi', nativeLabel: 'हिन्दी', sarvamSupported: true },
   { code: 'mr-IN', label: 'Marathi', nativeLabel: 'मराठी', sarvamSupported: true },
   { code: 'kn-IN', label: 'Kannada', nativeLabel: 'ಕನ್ನಡ', sarvamSupported: true },
 ];
 
-type TranslationKey =
+export type TranslationKey =
   | 'safetyCheck' | 'scanAfterShift' | 'scanWristband' | 'takesTenSeconds' | 'evenLight'
   | 'latestCheck' | 'normalTitle' | 'normalBody' | 'elevatedTitle' | 'elevatedBody'
   | 'highTitle' | 'highBody' | 'invalidTitle' | 'invalidBody' | 'checkedAt'
@@ -27,6 +30,7 @@ type TranslationKey =
   | 'chooseLanguage' | 'languageOffline' | 'sarvamReady' | 'account';
 
 const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
+  'en-IN': {},
   'bho-IN': {
     safetyCheck: 'रउरा सुरक्षा जाँच',
     scanAfterShift: 'शिफ्ट के बाद भा सुपरवाइजर कहे त कलाईबैंड स्कैन करीं।',
@@ -221,6 +225,70 @@ const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
   },
 };
 
+// Safety-critical and navigation copy must remain readable even when Sarvam is
+// unavailable. These phrases are also used as the immediate first paint while
+// the broader Sarvam cache warms in the background.
+const offlinePhrases: Partial<Record<AppLanguage, Record<string, string>>> = {
+  'hi-IN': {
+    'Shift duration': 'शिफ्ट की अवधि', '8 hours': '8 घंटे', 'Wristband status': 'कलाईबैंड की स्थिति', 'Not scanned': 'स्कैन नहीं किया गया',
+    'Wristband manual': 'कलाईबैंड निर्देश', 'Safety guidelines': 'सुरक्षा दिशा-निर्देश', 'Close': 'बंद करें', 'OSHA ceiling': 'OSHA सीमा',
+    'Keep the patch clean, dry, and visible.': 'पैच को साफ, सूखा और दिखाई देने योग्य रखें।',
+    'Place the full patch inside the camera frame after your shift.': 'शिफ्ट के बाद पूरे पैच को कैमरा फ्रेम के अंदर रखें।',
+    'Use even light and hold the phone steady.': 'समान रोशनी का उपयोग करें और फोन स्थिर रखें।',
+    'If the band is invalid, replace it and tell your supervisor.': 'यदि बैंड अमान्य है, तो उसे बदलें और अपने सुपरवाइज़र को बताएं।',
+    'OSHA H₂S safety guidelines': 'OSHA H₂S सुरक्षा दिशा-निर्देश',
+    'Never rely on the smell of H₂S; it can disable your sense of smell.': 'H₂S की गंध पर कभी भरोसा न करें; इससे आपकी सूंघने की क्षमता खत्म हो सकती है।',
+    'If an alarm or warning appears, leave the area and alert your supervisor.': 'अलार्म या चेतावनी दिखे तो इलाका छोड़ें और सुपरवाइज़र को सूचित करें।',
+    'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.': 'ताज़ी हवा की ओर हवा के पार या हवा के विपरीत जाएं। बिना प्रशिक्षण बचाव का प्रयास न करें।',
+    'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.': 'OSHA सामान्य उद्योग संदर्भ: 20 ppm सीमा; 50 ppm पीक केवल सीमित 10 मिनट का अपवाद है।',
+    'VALID': 'मान्य', 'HIGH': 'उच्च', 'ELEVATED': 'बढ़ा हुआ', 'RESCAN': 'फिर स्कैन करें',
+  },
+  'bho-IN': {
+    'Shift duration': 'शिफ्ट के समय', '8 hours': '8 घंटा', 'Wristband status': 'कलाईबैंड के स्थिति', 'Not scanned': 'स्कैन नइखे भइल',
+    'Wristband manual': 'कलाईबैंड निर्देश', 'Safety guidelines': 'सुरक्षा निर्देश', 'Close': 'बंद करीं', 'OSHA ceiling': 'OSHA सीमा',
+    'Keep the patch clean, dry, and visible.': 'पैच के साफ, सूखा आ साफ दिखाई देत राखीं।', 'Place the full patch inside the camera frame after your shift.': 'शिफ्ट के बाद पूरा पैच कैमरा फ्रेम में रखीं।',
+    'Use even light and hold the phone steady.': 'बराबर रोशनी में फोन स्थिर राखीं।', 'If the band is invalid, replace it and tell your supervisor.': 'बैंड अमान्य होखे त बदलीं आ सुपरवाइजर के बताईं।',
+    'OSHA H₂S safety guidelines': 'OSHA H₂S सुरक्षा निर्देश', 'Never rely on the smell of H₂S; it can disable your sense of smell.': 'H₂S के गंध पर भरोसा मत करीं; ई सूंघे के ताकत खत्म कर सकेला।',
+    'If an alarm or warning appears, leave the area and alert your supervisor.': 'अलार्म भा चेतावनी मिले त इलाका छोड़ीं आ सुपरवाइजर के बताईं।', 'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.': 'ताजा हवा दिसा जाईं। बिना ट्रेनिंग बचाव के कोशिश मत करीं।',
+    'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.': 'OSHA संदर्भ: 20 ppm सीमा; 50 ppm पीक सीमित 10 मिनट के अपवाद बा।', 'VALID': 'मान्य', 'HIGH': 'ज्यादा', 'ELEVATED': 'बढ़ल', 'RESCAN': 'फेरु स्कैन',
+  },
+  'mr-IN': {
+    'Shift duration': 'शिफ्टचा कालावधी', '8 hours': '8 तास', 'Wristband status': 'रिस्टबँड स्थिती', 'Not scanned': 'स्कॅन केलेले नाही', 'Wristband manual': 'रिस्टबँड मार्गदर्शक', 'Safety guidelines': 'सुरक्षा मार्गदर्शक', 'Close': 'बंद करा', 'OSHA ceiling': 'OSHA कमाल मर्यादा',
+    'Keep the patch clean, dry, and visible.': 'पॅच स्वच्छ, कोरडा आणि दिसेल असा ठेवा।', 'Place the full patch inside the camera frame after your shift.': 'शिफ्टनंतर पूर्ण पॅच कॅमेरा फ्रेममध्ये ठेवा।', 'Use even light and hold the phone steady.': 'समान प्रकाशात फोन स्थिर ठेवा।', 'If the band is invalid, replace it and tell your supervisor.': 'बँड अमान्य असल्यास बदला आणि पर्यवेक्षकाला सांगा।',
+    'OSHA H₂S safety guidelines': 'OSHA H₂S सुरक्षा मार्गदर्शक', 'Never rely on the smell of H₂S; it can disable your sense of smell.': 'H₂S च्या वासावर कधीही अवलंबून राहू नका; वास घेण्याची क्षमता कमी होऊ शकते।', 'If an alarm or warning appears, leave the area and alert your supervisor.': 'अलार्म किंवा इशारा आल्यास जागा सोडा आणि पर्यवेक्षकाला सांगा।', 'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.': 'ताजी हवा असलेल्या दिशेने जा. प्रशिक्षणाशिवाय बचाव करू नका।', 'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.': 'OSHA संदर्भ: 20 ppm कमाल; 50 ppm पीक हा मर्यादित 10-मिनिटांचा अपवाद आहे।', 'VALID': 'वैध', 'HIGH': 'उच्च', 'ELEVATED': 'वाढलेले', 'RESCAN': 'पुन्हा स्कॅन',
+  },
+  'kn-IN': {
+    'Shift duration': 'ಶಿಫ್ಟ್ ಅವಧಿ', '8 hours': '8 ಗಂಟೆಗಳು', 'Wristband status': 'ಕೈಪಟ್ಟಿ ಸ್ಥಿತಿ', 'Not scanned': 'ಸ್ಕ್ಯಾನ್ ಮಾಡಿಲ್ಲ', 'Wristband manual': 'ಕೈಪಟ್ಟಿ ಮಾರ್ಗದರ್ಶಿ', 'Safety guidelines': 'ಸುರಕ್ಷತಾ ಮಾರ್ಗಸೂಚಿಗಳು', 'Close': 'ಮುಚ್ಚಿ', 'OSHA ceiling': 'OSHA ಮಿತಿ',
+    'Keep the patch clean, dry, and visible.': 'ಪ್ಯಾಚ್ ಅನ್ನು ಸ್ವಚ್ಛವಾಗಿ, ಒಣಗಿಸಿ ಮತ್ತು ಕಾಣುವಂತೆ ಇರಿಸಿ.', 'Place the full patch inside the camera frame after your shift.': 'ಶಿಫ್ಟ್ ನಂತರ ಸಂಪೂರ್ಣ ಪ್ಯಾಚ್ ಅನ್ನು ಕ್ಯಾಮೆರಾ ಫ್ರೇಮ್‌ನಲ್ಲಿ ಇರಿಸಿ.', 'Use even light and hold the phone steady.': 'ಸಮ ಬೆಳಕಿನಲ್ಲಿ ಫೋನ್ ಅನ್ನು ಸ್ಥಿರವಾಗಿ ಹಿಡಿಯಿರಿ.', 'If the band is invalid, replace it and tell your supervisor.': 'ಬ್ಯಾಂಡ್ ಅಮಾನ್ಯವಾದರೆ ಬದಲಿಸಿ ಮತ್ತು ಮೇಲ್ವಿಚಾರಕರಿಗೆ ತಿಳಿಸಿ.',
+    'OSHA H₂S safety guidelines': 'OSHA H₂S ಸುರಕ್ಷತಾ ಮಾರ್ಗಸೂಚಿಗಳು', 'Never rely on the smell of H₂S; it can disable your sense of smell.': 'H₂S ವಾಸನೆಯನ್ನು ಎಂದಿಗೂ ನಂಬಬೇಡಿ; ಅದು ವಾಸನೆ ಗ್ರಹಿಕೆಯನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸಬಹುದು.', 'If an alarm or warning appears, leave the area and alert your supervisor.': 'ಅಲಾರಂ ಅಥವಾ ಎಚ್ಚರಿಕೆ ಬಂದರೆ ಸ್ಥಳವನ್ನು ಬಿಟ್ಟು ಮೇಲ್ವಿಚಾರಕರಿಗೆ ತಿಳಿಸಿ.', 'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.': 'ತಾಜಾ ಗಾಳಿಯ ಕಡೆಗೆ ಹೋಗಿ. ತರಬೇತಿಯಿಲ್ಲದೆ ರಕ್ಷಣೆಗೆ ಪ್ರಯತ್ನಿಸಬೇಡಿ.', 'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.': 'OSHA ಉಲ್ಲೇಖ: 20 ppm ಮಿತಿ; 50 ppm ಗರಿಷ್ಠವು ಸೀಮಿತ 10 ನಿಮಿಷದ ವಿನಾಯಿತಿ.', 'VALID': 'ಮಾನ್ಯ', 'HIGH': 'ಹೆಚ್ಚು', 'ELEVATED': 'ಹೆಚ್ಚಿದ', 'RESCAN': 'ಮತ್ತೆ ಸ್ಕ್ಯಾನ್',
+  },
+};
+
+const memoryCache = new Map<string, string>();
+const inFlight = new Map<string, Promise<string>>();
+const listeners = new Set<() => void>();
+const CACHE_NAMESPACE = 'sarvam-ui-v1';
+
+function cacheKey(input: string, language: AppLanguage): string {
+  return `${CACHE_NAMESPACE}:${language}:${encodeURIComponent(input)}`;
+}
+
+function notifyTranslationReady() {
+  listeners.forEach(listener => listener());
+}
+
+/** Subscribe UI hooks so cached translations immediately repaint the screen. */
+export function subscribeToTranslationUpdates(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Synchronous read used while React renders. Falls back to the English source. */
+export function getCachedUiText(input: string, language: AppLanguage): string {
+  if (language === 'en-IN') return input;
+  return offlinePhrases[language]?.[input] ?? memoryCache.get(cacheKey(input, language)) ?? input;
+}
+
 export function translateUi(key: TranslationKey, language: AppLanguage, fallback: string): string {
   return copy[language][key] ?? fallback;
 }
@@ -230,6 +298,7 @@ export function isSarvamConfigured(): boolean {
 }
 
 export async function translateWithSarvam(input: string, targetLanguage: AppLanguage): Promise<string> {
+  if (targetLanguage === 'en-IN') return input;
   if (targetLanguage === 'bho-IN') throw new Error('Sarvam Translate does not currently list Bhojpuri support');
   const apiKey = process.env.EXPO_PUBLIC_SARVAM_API_KEY;
   if (!apiKey) throw new Error('Missing EXPO_PUBLIC_SARVAM_API_KEY');
@@ -252,6 +321,54 @@ export async function translateWithSarvam(input: string, targetLanguage: AppLang
   const payload = await response.json() as { translated_text?: string };
   if (!payload.translated_text) throw new Error('Sarvam returned no translated text');
   return payload.translated_text;
+}
+
+/**
+ * Fetch one phrase at most once per language. Disk cache is checked first,
+ * then Sarvam is used only for a cache miss. Bhojpuri remains local because it
+ * is not in Sarvam Translate's listed target languages.
+ */
+export async function ensureCachedTranslation(input: string, targetLanguage: AppLanguage): Promise<string> {
+  if (!input || targetLanguage === 'en-IN') return input;
+  const key = cacheKey(input, targetLanguage);
+  const memoryValue = memoryCache.get(key);
+  if (memoryValue) return memoryValue;
+
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const saved = await getCachedTranslation(key);
+    if (saved) {
+      memoryCache.set(key, saved);
+      notifyTranslationReady();
+      return saved;
+    }
+
+    // Do not make an API call when a supported offline safety translation is
+    // already supplied by the app, or where Sarvam has no language support.
+    const offline = offlinePhrases[targetLanguage]?.[input];
+    if (offline) return offline;
+    if (targetLanguage === 'bho-IN' || !isSarvamConfigured()) return input;
+
+    const translated = await translateWithSarvam(input, targetLanguage);
+    memoryCache.set(key, translated);
+    await saveCachedTranslation(key, targetLanguage, input, translated);
+    notifyTranslationReady();
+    return translated;
+  })().catch(() => input).finally(() => inFlight.delete(key));
+
+  inFlight.set(key, task);
+  return task;
+}
+
+/** Warm only common, short UI phrases after a language change. */
+export async function warmTranslationCache(language: AppLanguage, phrases: string[]): Promise<void> {
+  if (language === 'en-IN' || language === 'bho-IN' || !isSarvamConfigured()) return;
+  // Small batches avoid a burst of API calls while still making page changes feel instant.
+  for (let index = 0; index < phrases.length; index += 3) {
+    await Promise.all(phrases.slice(index, index + 3).map(phrase => ensureCachedTranslation(phrase, language)));
+  }
 }
 
 export async function translateOrFallback(input: string, targetLanguage: AppLanguage, fallback: string): Promise<string> {

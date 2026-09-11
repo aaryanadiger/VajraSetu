@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Image,
   Modal,
   Pressable,
@@ -15,9 +16,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useLanguage } from '../navigation/RootNavigator';
+import { useSarvamText } from '../hooks/useSarvamText';
 import { theme } from '../theme';
-import { getAllReadingsToday, getSettings } from '../services/db';
-import { AppSettings, Reading, RiskBand } from '../types';
+import { getAccountProfile, getAllReadingsToday, getSettings } from '../services/db';
+import { AccountProfile, AppSettings, Reading, RiskBand } from '../types';
 import { AppLanguage, LANGUAGE_OPTIONS, isSarvamConfigured, translateUi } from '../services/translation';
 
 function riskMeta(band: RiskBand) {
@@ -31,6 +33,7 @@ function greeting(language: AppLanguage) {
   const hour = new Date().getHours();
   const period = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
   const values: Record<AppLanguage, Record<string, string>> = {
+    'en-IN': { morning: 'Good morning', afternoon: 'Good afternoon', evening: 'Good evening' },
     'bho-IN': { morning: 'सुप्रभात', afternoon: 'नमस्कार', evening: 'शुभ संध्या' },
     'hi-IN': { morning: 'सुप्रभात', afternoon: 'नमस्कार', evening: 'शुभ संध्या' },
     'mr-IN': { morning: 'शुभ सकाळ', afternoon: 'नमस्कार', evening: 'शुभ संध्याकाळ' },
@@ -39,20 +42,31 @@ function greeting(language: AppLanguage) {
   return values[language][period];
 }
 
+function initials(name?: string) {
+  return (name ?? 'Worker').split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase();
+}
+
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const { language, setLanguage } = useLanguage();
+  const sarvamText = useSarvamText();
   const [readings, setReadings] = useState<Reading[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [guide, setGuide] = useState<'manual' | 'safety' | null>(null);
 
-  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
+    const local = translateUi(key, language, fallback);
+    return local === fallback ? sarvamText(fallback) : local;
+  };
   const load = useCallback(async () => {
-    const [today, appSettings] = await Promise.all([getAllReadingsToday(), getSettings()]);
+    const [today, appSettings, account] = await Promise.all([getAllReadingsToday(), getSettings(), getAccountProfile()]);
     setReadings(today);
     setSettings(appSettings);
+    setProfile(account);
     setLoading(false);
   }, []);
 
@@ -67,6 +81,7 @@ export const HomeScreen: React.FC = () => {
   const latest = readings[0];
   const band: RiskBand = latest?.band_valid ? latest.risk_band : latest ? 'invalid' : 'low';
   const status = riskMeta(band);
+  const statusLabel = sarvamText(status.label);
   const oel = settings?.oel_twa_ppm ?? 5;
   const exposure = latest?.band_valid ? latest.cumulative_ppm_hr : 0;
   const progress = latest?.band_valid ? Math.min(1, latest.twa_ppm / oel) : 0;
@@ -86,14 +101,14 @@ export const HomeScreen: React.FC = () => {
               <Image source={require('../../assets/logo.png')} style={styles.logoMark} resizeMode="contain" />
               <Text style={styles.wordmark}>Vajra सेतु</Text>
             </View>
-            <Text style={styles.greeting}>{greeting(language)}</Text>
+            <Text style={styles.greeting}>{greeting(language)}{profile?.name ? `, ${profile.name.split(' ')[0]}` : ''}</Text>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconControl} onPress={() => setLanguageOpen(true)} accessibilityRole="button" accessibilityLabel="Choose language">
               <Ionicons name="language-outline" size={22} color="#344054" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.accountBadge} onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel={tx('account', 'Account')}>
-              <Ionicons name="person" size={19} color="#fff" />
+              <Text style={styles.accountInitials}>{initials(profile?.name)}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -103,7 +118,7 @@ export const HomeScreen: React.FC = () => {
         <View style={styles.exposureSurface}>
           <View style={styles.surfaceHeader}>
             <Text style={styles.surfaceLabel}>{tx('latestExposure', 'Latest recorded exposure')}</Text>
-            {latest && <View style={[styles.statusPill, { backgroundColor: `${status.color}14` }]}><Ionicons name={status.icon} size={14} color={status.color} /><Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text></View>}
+            {latest && <View style={[styles.statusPill, { backgroundColor: `${status.color}14` }]}><Ionicons name={status.icon} size={14} color={status.color} /><Text style={[styles.statusPillText, { color: status.color }]}>{statusLabel}</Text></View>}
           </View>
 
           {loading ? <ActivityIndicator color="#1677FF" style={styles.loader} /> : (
@@ -115,7 +130,7 @@ export const HomeScreen: React.FC = () => {
               <SegmentedMeter fraction={progress} color={status.color} />
               <View style={styles.meterLabels}>
                 <Text style={styles.meterLabel}>0</Text>
-                <Text style={styles.meterLimit}>{tx('referenceLimit', 'Threshold')}: {oel} ppm TWA</Text>
+                <Text style={styles.meterLimit}>{tx('referenceLimit', 'OSHA ceiling')}: {oel} ppm</Text>
                 <Text style={styles.meterLabel}>{oel}</Text>
               </View>
             </>
@@ -123,8 +138,8 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         <View style={styles.utilityPanel}>
-          <UtilityRow icon="time-outline" title="Shift duration" value="8 hours" last />
-          <UtilityRow icon="hardware-chip-outline" title="Wristband status" value={latest?.band_valid ? status.label : 'Not scanned'} valueColor={latest ? status.color : undefined} />
+          <UtilityRow icon="time-outline" title={sarvamText('Shift duration')} value={sarvamText('8 hours')} last />
+          <UtilityRow icon="hardware-chip-outline" title={sarvamText('Wristband status')} value={latest?.band_valid ? statusLabel : sarvamText('Not scanned')} valueColor={latest ? status.color : undefined} />
         </View>
 
         <TouchableOpacity style={styles.primaryAction} onPress={openScan} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={tx('scanWristband', 'Scan wristband')}>
@@ -137,8 +152,8 @@ export const HomeScreen: React.FC = () => {
         </TouchableOpacity>
 
         <View style={styles.quickActions}>
-          <QuickAction icon="document-text-outline" label="Wristband manual" onPress={() => navigation.navigate('History')} />
-          <QuickAction icon="shield-checkmark-outline" label="Safety guide" onPress={() => navigation.navigate('History')} />
+          <QuickAction icon="document-text-outline" label={sarvamText('Wristband manual')} onPress={() => setGuide('manual')} />
+          <QuickAction icon="shield-checkmark-outline" label={sarvamText('Safety guidelines')} onPress={() => setGuide('safety')} />
         </View>
 
         <Text style={styles.footerNote}>{tx('scanAfterShift', 'Scan your wristband after your shift or when your supervisor asks.')}</Text>
@@ -160,6 +175,7 @@ export const HomeScreen: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+      <GuideModal guide={guide} onClose={() => setGuide(null)} />
     </SafeAreaView>
   );
 };
@@ -185,6 +201,65 @@ const QuickAction: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: strin
   </TouchableOpacity>
 );
 
+const GUIDE_CONTENT = {
+  manual: {
+    title: 'Wristband manual', icon: 'document-text-outline' as const,
+    items: ['Keep the patch clean, dry, and visible.', 'Place the full patch inside the camera frame after your shift.', 'Use even light and hold the phone steady.', 'If the band is invalid, replace it and tell your supervisor.'],
+  },
+  safety: {
+    title: 'OSHA H₂S safety guidelines', icon: 'shield-checkmark-outline' as const,
+    items: ['Never rely on the smell of H₂S; it can disable your sense of smell.', 'If an alarm or warning appears, leave the area and alert your supervisor.', 'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.', 'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.'],
+  },
+};
+
+const GuideModal: React.FC<{ guide: 'manual' | 'safety' | null; onClose: () => void }> = ({ guide, onClose }) => {
+  const t = useSarvamText();
+  const [activeGuide, setActiveGuide] = useState<'manual' | 'safety' | null>(guide);
+  const [mounted, setMounted] = useState(Boolean(guide));
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetTranslateY = useRef(new Animated.Value(36)).current;
+
+  useEffect(() => {
+    if (guide) {
+      setActiveGuide(guide);
+      setMounted(true);
+      backdropOpacity.setValue(0);
+      sheetTranslateY.setValue(36);
+      Animated.parallel([
+        Animated.timing(backdropOpacity, { toValue: 1, duration: 170, useNativeDriver: true }),
+        Animated.spring(sheetTranslateY, { toValue: 0, speed: 18, bounciness: 4, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
+    if (!mounted) return;
+    Animated.parallel([
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(sheetTranslateY, { toValue: 36, duration: 150, useNativeDriver: true }),
+    ]).start(() => setMounted(false));
+  }, [guide, mounted, backdropOpacity, sheetTranslateY]);
+
+  if (!mounted || !activeGuide) return null;
+  const content = GUIDE_CONTENT[activeGuide];
+  return (
+    <Modal visible transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <Animated.View style={[styles.guideBackdrop, { opacity: backdropOpacity }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel={t('Close')} />
+        <Animated.View style={[styles.guideSheet, { transform: [{ translateY: sheetTranslateY }] }]}>
+          <Pressable onPress={() => undefined}>
+          <View style={styles.sheetHandle} />
+          <View style={styles.guideHeader}>
+            <View style={styles.guideIcon}><Ionicons name={content.icon} size={20} color="#1677FF" /></View>
+            <Text style={styles.guideTitle}>{t(content.title)}</Text>
+            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel={t('Close')}><Ionicons name="close" size={22} color="#667085" /></TouchableOpacity>
+          </View>
+          {content.items.map(item => <View key={item} style={styles.guideItem}><View style={styles.guideDot} /><Text style={styles.guideText}>{t(item)}</Text></View>)}
+          </Pressable>
+        </Animated.View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#F6F7F9' },
   content: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24 },
@@ -196,6 +271,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', gap: 10 },
   iconControl: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', alignItems: 'center', justifyContent: 'center' },
   accountBadge: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#1677FF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#D0E5FF' },
+  accountInitials: { fontFamily: theme.typography.family.bold, fontSize: 13, color: '#fff', letterSpacing: 0.3 },
   screenTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: '#101828', marginBottom: 12 },
   exposureSurface: { backgroundColor: '#fff', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EAECF0' },
   surfaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -226,6 +302,14 @@ const styles = StyleSheet.create({
   quickActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   quickAction: { flex: 1, minHeight: 82, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 18, padding: 14, justifyContent: 'space-between' },
   quickActionText: { fontFamily: theme.typography.family.medium, fontSize: 13, color: '#344054', marginTop: 10 },
+  guideBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
+  guideSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34 },
+  guideHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+  guideIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#EAF3FF', alignItems: 'center', justifyContent: 'center' },
+  guideTitle: { flex: 1, fontFamily: theme.typography.family.semiBold, fontSize: 18, color: '#101828' },
+  guideItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, paddingVertical: 5 },
+  guideDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1677FF', marginTop: 6 },
+  guideText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: 13, lineHeight: 18, color: '#475467' },
   footerNote: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085', lineHeight: 18, marginTop: 20, textAlign: 'center', paddingHorizontal: 16 },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
   languageSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34 },

@@ -1,46 +1,20 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  Switch, TouchableOpacity, Alert, Share,
+  TouchableOpacity, Alert, Share, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
+import { useSarvamText } from '../hooks/useSarvamText';
 import { AppHeader } from '../components/ui/AppHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { getSettings, setSetting, getAllReadings, getWorkers, getShiftsByWorker } from '../services/db';
+import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadings, getWorkers, getShiftsByWorker } from '../services/db';
 import { generateCSV, getExportFilename } from '../services/csv';
-import { AppSettings, DEFAULT_SETTINGS } from '../types';
+import { AccountProfile, AppSettings, DEFAULT_SETTINGS, OSHA_H2S_LIMITS } from '../types';
 import { getCurve } from '../services/calibration';
-import { useAuth } from '../navigation/RootNavigator';
 import * as FileSystem from 'expo-file-system/legacy';
-
-function ThresholdRow({
-  label, value, unit, onDecrement, onIncrement, description,
-}: {
-  label: string; value: number; unit: string;
-  onDecrement: () => void; onIncrement: () => void;
-  description?: string;
-}) {
-  return (
-    <View style={styles.thresholdRow}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.thresholdLabel}>{label}</Text>
-        {description && <Text style={styles.thresholdDesc}>{description}</Text>}
-      </View>
-      <View style={styles.stepper}>
-        <TouchableOpacity style={styles.stepperBtn} onPress={onDecrement}>
-          <Ionicons name="remove" size={18} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.stepperValue}>{value} {unit}</Text>
-        <TouchableOpacity style={styles.stepperBtn} onPress={onIncrement}>
-          <Ionicons name="add" size={18} color={theme.colors.primary} />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
 
 function SettingRow({
   icon, label, value, onPress, chevron = true,
@@ -61,25 +35,54 @@ function SettingRow({
 }
 
 export const SettingsScreen: React.FC = () => {
-  const { logout } = useAuth();
+  const t = useSarvamText();
   const [settings, setLocalSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [exporting, setExporting] = useState(false);
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [workerCode, setWorkerCode] = useState('');
+  const [siteId, setSiteId] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
   const curve = getCurve(settings.calibration_curve_version);
 
   useEffect(() => {
-    getSettings().then(setLocalSettings);
+    Promise.all([getSettings(), getAccountProfile()]).then(([appSettings, account]) => {
+      setLocalSettings(appSettings);
+      setProfile(account);
+    });
   }, []);
+
+  function openProfile() {
+    setName(profile?.name ?? '');
+    setWorkerCode(profile?.worker_code ?? '');
+    setSiteId(profile?.site_id ?? '');
+    setProfileError('');
+    setProfileOpen(true);
+  }
+
+  async function saveProfile() {
+    if (!name.trim() || !workerCode.trim() || !siteId.trim()) {
+      setProfileError('Enter your name, worker ID, and site.');
+      return;
+    }
+    setSavingProfile(true);
+    try {
+      const saved = await saveAccountProfile({ name, worker_code: workerCode, site_id: siteId });
+      setProfile(saved);
+      setProfileOpen(false);
+    } catch {
+      setProfileError('That worker ID is already in use. Check it and try again.');
+    } finally {
+      setSavingProfile(false);
+    }
+  }
 
   async function updateSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]) {
     const updated = { ...settings, [key]: value };
     setLocalSettings(updated);
     await setSetting(key, String(value));
-  }
-
-  function stepValue<K extends keyof AppSettings>(key: K, step: number, min: number, max: number) {
-    const cur = settings[key] as number;
-    const next = Math.min(max, Math.max(min, parseFloat((cur + step).toFixed(1))));
-    updateSetting(key, next as any);
   }
 
   async function handleExport() {
@@ -103,17 +106,6 @@ export const SettingsScreen: React.FC = () => {
     }
   }
 
-  function handleLogout() {
-    Alert.alert(
-      'Logout',
-      'This will end your session. You will need to enter your PIN again.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Logout', style: 'destructive', onPress: logout },
-      ]
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safe}>
       <LinearGradient colors={['#f5f8ff', '#e8f1fb', '#c8daf4']} style={StyleSheet.absoluteFill} />
@@ -121,67 +113,39 @@ export const SettingsScreen: React.FC = () => {
         <AppHeader />
 
         <View style={styles.titleSection}>
-          <Text style={styles.pageTitle}>Settings</Text>
+          <Text style={styles.pageTitle}>{t('Settings')}</Text>
         </View>
 
-        {/* ── OEL / Thresholds ── */}
+        {/* ── OSHA reference limits — intentionally read-only ── */}
         <Card>
           <View style={styles.cardHeaderRow}>
-            <Ionicons name="warning-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>Exposure Thresholds</Text>
+            <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.text.primary} />
+            <Text style={styles.cardTitle}>{t('H₂S safety reference')}</Text>
           </View>
-          <Text style={styles.sectionNote}>
-            Values are configurable. Defaults match India occupational exposure limits.
-            Confirm with your safety authority before changing.
-          </Text>
-
-          <ThresholdRow
-            label="OEL TWA"
-            value={settings.oel_twa_ppm}
-            unit="ppm"
-            description="8-hour time-weighted average limit"
-            onDecrement={() => stepValue('oel_twa_ppm', -0.5, 0.5, 50)}
-            onIncrement={() => stepValue('oel_twa_ppm', 0.5, 0.5, 50)}
-          />
-          <ThresholdRow
-            label="OEL STEL"
-            value={settings.oel_stel_ppm}
-            unit="ppm"
-            description="Short-term exposure limit (15 min)"
-            onDecrement={() => stepValue('oel_stel_ppm', -1, 1, 100)}
-            onIncrement={() => stepValue('oel_stel_ppm', 1, 1, 100)}
-          />
-          <ThresholdRow
-            label="Risk: Elevated TWA"
-            value={settings.risk_elevated_twa}
-            unit="ppm"
-            description="TWA above this → Elevated band"
-            onDecrement={() => stepValue('risk_elevated_twa', -0.5, 0.1, settings.risk_high_twa - 0.5)}
-            onIncrement={() => stepValue('risk_elevated_twa', 0.5, 0.1, settings.risk_high_twa - 0.5)}
-          />
-          <ThresholdRow
-            label="Risk: High TWA"
-            value={settings.risk_high_twa}
-            unit="ppm"
-            description="TWA above this → High risk band"
-            onDecrement={() => stepValue('risk_high_twa', -0.5, settings.risk_elevated_twa + 0.5, 50)}
-            onIncrement={() => stepValue('risk_high_twa', 0.5, settings.risk_elevated_twa + 0.5, 50)}
-          />
+          <View style={styles.limitRow}>
+            <View><Text style={styles.limitLabel}>{t('General industry ceiling')}</Text><Text style={styles.limitNote}>{t('Must not be exceeded')}</Text></View>
+            <Text style={styles.limitValue}>{OSHA_H2S_LIMITS.generalIndustryCeilingPpm} ppm</Text>
+          </View>
+          <View style={styles.limitRow}>
+            <View><Text style={styles.limitLabel}>{t('Maximum peak')}</Text><Text style={styles.limitNote}>{t('One period of up to')} {OSHA_H2S_LIMITS.maximumPeakMinutes} {t('minutes; only when no other measurable exposure occurs')}</Text></View>
+            <Text style={styles.limitValue}>{OSHA_H2S_LIMITS.maximumPeakPpm} ppm</Text>
+          </View>
+          <Text style={styles.safetyDisclaimer}>{t('This wristband estimates cumulative exposure. It cannot measure instantaneous peaks or establish OSHA compliance. Follow your site’s H₂S procedure and supervisor instructions.')}</Text>
         </Card>
 
         {/* ── Calibration ── */}
         <Card>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="color-filter-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>Calibration</Text>
+            <Text style={styles.cardTitle}>{t('Calibration')}</Text>
           </View>
-          <SettingRow icon="document-text-outline" label="Curve version" value={curve.version} />
-          <SettingRow icon="information-circle-outline" label="Curve description" value="" chevron={false} />
+          <SettingRow icon="document-text-outline" label={t('Curve version')} value={curve.version} />
+          <SettingRow icon="information-circle-outline" label={t('Curve description')} value="" chevron={false} />
           <Text style={styles.calibrationDesc}>{curve.description}</Text>
           <SettingRow
             icon="warning"
-            label="Placeholder data"
-            value="Replace before use"
+            label={t('Prototype calibration')}
+            value={t('Replace before use')}
             chevron={false}
           />
         </Card>
@@ -190,7 +154,7 @@ export const SettingsScreen: React.FC = () => {
         <Card>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="options-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>Units</Text>
+            <Text style={styles.cardTitle}>{t('Units')}</Text>
           </View>
           <View style={styles.unitToggle}>
             {(['ppm_hr', 'mg_m3_hr'] as const).map(u => (
@@ -211,17 +175,17 @@ export const SettingsScreen: React.FC = () => {
         <Card>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="cloud-download-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>Data & Export</Text>
+            <Text style={styles.cardTitle}>{t('Data & export')}</Text>
           </View>
-          <SettingRow icon="wifi-outline" label="Sync Status" value="Local only (sync not configured)" chevron={false} />
+          <SettingRow icon="wifi-outline" label={t('Sync status')} value={t('Local only')} chevron={false} />
           <Button
-            label={exporting ? 'Exporting…' : 'Export CSV for Compliance'}
+            label={exporting ? t('Exporting…') : t('Export CSV')}
             onPress={handleExport}
             disabled={exporting}
             style={styles.exportBtn}
           />
           <Text style={styles.exportNote}>
-            Exports all readings with worker, shift, TWA, H₂S Index, and calibration version.
+            {t('Exports your readings with TWA, H₂S Index, and calibration version.')}
           </Text>
         </Card>
 
@@ -229,10 +193,16 @@ export const SettingsScreen: React.FC = () => {
         <Card>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="person-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>Account</Text>
+            <Text style={styles.cardTitle}>{t('Account')}</Text>
           </View>
-          <SettingRow icon="lock-closed-outline" label="Change PIN" onPress={() => Alert.alert('Change PIN', 'Log out and log back in to set a new PIN.')} />
-          <SettingRow icon="log-out-outline" label="Logout" onPress={handleLogout} />
+          <View style={styles.profileSummary}>
+            <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{(profile?.name ?? 'Worker').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase()}</Text></View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profileName}>{profile?.name ?? t('Finish your profile')}</Text>
+              <Text style={styles.profileMeta}>{profile ? `${profile.worker_code} · ${profile.site_id}` : t('Your scans are stored on this device.')}</Text>
+            </View>
+          </View>
+          <Button label={profile ? t('Edit account details') : t('Add account details')} variant="outline" onPress={openProfile} style={styles.accountButton} />
         </Card>
 
         {/* App info */}
@@ -244,6 +214,21 @@ export const SettingsScreen: React.FC = () => {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+      <Modal visible={profileOpen} transparent animationType="slide" onRequestClose={() => setProfileOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.profileSheet}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>{t('Your account')}</Text>
+            <Text style={styles.sheetNote}>{t('These details label your personal exposure record.')}</Text>
+            <TextInput style={styles.profileInput} value={name} onChangeText={setName} placeholder={t('Full name')} autoCapitalize="words" />
+            <TextInput style={styles.profileInput} value={workerCode} onChangeText={setWorkerCode} placeholder={t('Worker ID')} autoCapitalize="characters" />
+            <TextInput style={styles.profileInput} value={siteId} onChangeText={setSiteId} placeholder={t('Site / factory')} autoCapitalize="characters" />
+            {profileError ? <Text style={styles.profileError}>{profileError}</Text> : null}
+            <Button label={savingProfile ? t('Saving…') : t('Save details')} onPress={saveProfile} disabled={savingProfile} style={styles.sheetButton} />
+            <Button label={t('Cancel')} variant="outline" onPress={() => setProfileOpen(false)} />
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -279,45 +264,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: theme.spacing.lg,
   },
-  thresholdRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: theme.spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    gap: theme.spacing.md,
-  },
-  thresholdLabel: {
-    fontFamily: theme.typography.family.medium,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.primary,
-  },
-  thresholdDesc: {
-    fontFamily: theme.typography.family.main,
-    fontSize: 11,
-    color: theme.colors.text.secondary,
-    marginTop: 2,
-  },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-  },
-  stepperBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: theme.colors.primaryLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stepperValue: {
-    fontFamily: theme.typography.family.semiBold,
-    fontSize: theme.typography.size.sm,
-    color: theme.colors.text.primary,
-    minWidth: 60,
-    textAlign: 'center',
-  },
+  limitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border },
+  limitLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.primary },
+  limitNote: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.secondary, marginTop: 2, maxWidth: 220, lineHeight: 15 },
+  limitValue: { fontFamily: theme.typography.family.bold, fontSize: theme.typography.size.md, color: '#1677FF' },
+  safetyDisclaimer: { fontFamily: theme.typography.family.main, fontSize: 11, lineHeight: 16, color: theme.colors.text.secondary, backgroundColor: '#F8FAFC', borderRadius: 12, padding: theme.spacing.md, marginTop: theme.spacing.sm },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -373,6 +324,20 @@ const styles = StyleSheet.create({
   },
   unitTextActive: { color: theme.colors.text.primary },
   exportBtn: { width: '100%', marginTop: theme.spacing.md },
+  profileSummary: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingBottom: theme.spacing.md },
+  profileAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#1677FF', alignItems: 'center', justifyContent: 'center' },
+  profileAvatarText: { fontFamily: theme.typography.family.bold, fontSize: 14, color: '#fff' },
+  profileName: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, color: theme.colors.text.primary },
+  profileMeta: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary, marginTop: 2 },
+  accountButton: { width: '100%', marginBottom: theme.spacing.sm },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
+  profileSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: theme.spacing.xl, gap: theme.spacing.md },
+  sheetHandle: { width: 38, height: 4, borderRadius: 4, backgroundColor: '#D0D5DD', alignSelf: 'center', marginBottom: theme.spacing.xs },
+  sheetTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 21, color: theme.colors.text.primary },
+  sheetNote: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary, marginBottom: theme.spacing.sm },
+  profileInput: { minHeight: 52, borderRadius: 14, backgroundColor: '#F3F6FA', paddingHorizontal: theme.spacing.lg, fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, color: theme.colors.text.primary },
+  profileError: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, color: theme.colors.semantic.danger },
+  sheetButton: { width: '100%' },
   exportNote: {
     fontFamily: theme.typography.family.main,
     fontSize: 11,

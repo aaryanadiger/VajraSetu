@@ -12,6 +12,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useLanguage } from '../navigation/RootNavigator';
+import { useSarvamText } from '../hooks/useSarvamText';
 import { theme } from '../theme';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
@@ -21,6 +22,8 @@ import {
   createShift,
   createWristband,
   createWorker,
+  getAccountProfile,
+  getWorkerById,
   getWorkers,
   getSettings,
   saveReading,
@@ -40,7 +43,9 @@ const PIPELINE_STAGES = [
   'Preparing your result',
 ];
 
-const SHIFT_OPTIONS = [6, 8, 10, 12] as const;
+// A shift duration is not chosen at the camera. The current prototype uses
+// the standard 8-hour reference consistently for every cumulative reading.
+const REFERENCE_SHIFT_HOURS = 8;
 
 function riskCopy(band: RiskBand, language: AppLanguage) {
   switch (band) {
@@ -57,17 +62,20 @@ export const CaptureFlowScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { language } = useLanguage();
+  const sarvamText = useSarvamText();
   const [step, setStep] = useState<Step>('camera');
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [torchOn, setTorchOn] = useState(Boolean(route.params?.initialTorch));
-  const [shiftHours, setShiftHours] = useState(8);
   const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState<ProcessingResult | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
-  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
+    const local = translateUi(key, language, fallback);
+    return local === fallback ? sarvamText(fallback) : local;
+  };
 
   useEffect(() => {
     getSettings().then(setSettings);
@@ -99,12 +107,16 @@ export const CaptureFlowScreen: React.FC = () => {
     }
 
     const regions = await extractRegionsFromImage(imageUri);
-    const processed = await runExposurePipeline(regions, shiftHours, settings);
+    const processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS, settings);
     setResult(processed);
 
     try {
-      const workers = await getWorkers();
-      const worker = workers[0] ?? await createWorker({
+      const profile = await getAccountProfile();
+      const profileWorker = profile ? await getWorkerById(profile.worker_id) : null;
+      const workers = profileWorker ? [] : await getWorkers();
+      // Every scan belongs to the signed-in worker profile. The fallback keeps
+      // older installs usable until they complete their profile in Settings.
+      const worker = profileWorker ?? workers[0] ?? await createWorker({
         name: 'Worker',
         worker_code: 'WORKER-001',
         site_id: 'DEFAULT_SITE',
@@ -116,7 +128,7 @@ export const CaptureFlowScreen: React.FC = () => {
       });
       const shift = await createShift({
           worker_id: worker.id,
-          start_time: new Date(Date.now() - shiftHours * 3600000).toISOString(),
+          start_time: new Date(Date.now() - REFERENCE_SHIFT_HOURS * 3600000).toISOString(),
           end_time: new Date().toISOString(),
           wristband_id: wristband.id,
       });
@@ -178,16 +190,6 @@ export const CaptureFlowScreen: React.FC = () => {
           </View>
 
           <View style={styles.cameraBottom}>
-            <View style={styles.shiftCard}>
-              <Text style={styles.shiftLabel}>{tx('shiftLength', 'Shift length')}</Text>
-              <View style={styles.shiftOptions}>
-                {SHIFT_OPTIONS.map(hours => (
-                  <TouchableOpacity key={hours} onPress={() => setShiftHours(hours)} style={[styles.shiftOption, shiftHours === hours && styles.shiftOptionActive]} accessibilityRole="radio" accessibilityState={{ selected: shiftHours === hours }}>
-                    <Text style={[styles.shiftOptionText, shiftHours === hours && styles.shiftOptionTextActive]}>{hours}h</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
             <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing) && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing} accessibilityRole="button" accessibilityLabel="Capture wristband">
               <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
               <Text style={styles.captureLabel}>{cameraReady ? tx('tapToScan', 'Tap to scan') : tx('startingCamera', 'Starting camera…')}</Text>
@@ -218,7 +220,11 @@ export const CaptureFlowScreen: React.FC = () => {
 
 const PermissionStep: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const { language } = useLanguage();
-  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
+  const sarvamText = useSarvamText();
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
+    const local = translateUi(key, language, fallback);
+    return local === fallback ? sarvamText(fallback) : local;
+  };
   return (
     <SafeAreaView style={styles.permissionScreen}>
       <View style={styles.permissionIcon}><Ionicons name="camera-outline" size={34} color={theme.colors.primary} /></View>
@@ -237,7 +243,11 @@ const ResultStep: React.FC<{
   onDone: () => void;
   onHistory: () => void;
 }> = ({ result, settings, language, onRescan, onDone, onHistory }) => {
-  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => translateUi(key, language, fallback);
+  const sarvamText = useSarvamText();
+  const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
+    const local = translateUi(key, language, fallback);
+    return local === fallback ? sarvamText(fallback) : local;
+  };
   if (!result.band_valid) {
     return (
       <SafeAreaView style={styles.resultScreen}>
@@ -278,7 +288,7 @@ const ResultStep: React.FC<{
           <Text style={styles.detailLabel}>{tx('latestExposure', 'Your latest reading')}</Text>
           <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.twa_ppm.toFixed(2)}</Text><Text style={styles.bigUnit}>ppm TWA</Text></View>
           <View style={styles.resultRule} />
-          <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'Reference limit')}</Text><Text style={styles.detailValue}>{oel} ppm TWA</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'OSHA ceiling')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>Cumulative exposure</Text><Text style={styles.detailValue}>{result.cumulative_ppm_hr.toFixed(1)} ppm·hr</Text></View>
         </Card>
 
@@ -304,14 +314,7 @@ const styles = StyleSheet.create({
   instructionCard: { alignSelf: 'center', backgroundColor: '#00000099', borderRadius: 18, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.lg, maxWidth: 320 },
   instructionTitle: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
   instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
-  cameraBottom: { gap: theme.spacing.lg },
-  shiftCard: { backgroundColor: '#00000099', borderRadius: 18, padding: theme.spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  shiftLabel: { color: '#ffffffCC', fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs },
-  shiftOptions: { flexDirection: 'row', gap: theme.spacing.xs },
-  shiftOption: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: '#ffffff22' },
-  shiftOptionActive: { backgroundColor: theme.colors.primary },
-  shiftOptionText: { color: '#ffffffCC', fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs },
-  shiftOptionTextActive: { color: '#fff' },
+  cameraBottom: { alignItems: 'center' },
   captureButton: { alignItems: 'center', gap: theme.spacing.sm },
   captureButtonDisabled: { opacity: 0.55 },
   captureButtonInner: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#fff', borderWidth: 5, borderColor: '#ffffff99', justifyContent: 'center', alignItems: 'center' },

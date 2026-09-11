@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { Worker, Shift, Wristband, Reading, AppSettings, DEFAULT_SETTINGS } from '../types';
+import { AccountProfile, Worker, Shift, Wristband, Reading, AppSettings, DEFAULT_SETTINGS, OSHA_H2S_LIMITS } from '../types';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -71,6 +71,27 @@ export async function initDB(): Promise<void> {
       id        INTEGER PRIMARY KEY DEFAULT 1,
       pin_hash  TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS account_profile (
+      id          INTEGER PRIMARY KEY CHECK (id = 1),
+      name        TEXT NOT NULL,
+      worker_code TEXT NOT NULL,
+      site_id     TEXT NOT NULL,
+      worker_id   TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS translation_cache (
+      cache_key       TEXT PRIMARY KEY,
+      language_code   TEXT NOT NULL,
+      source_text     TEXT NOT NULL,
+      translated_text TEXT NOT NULL,
+      updated_at      TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS app_preferences (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   await _ensureDefaultSettings(db);
@@ -119,6 +140,39 @@ export async function updateWorker(id: string, updates: Partial<Omit<Worker, 'id
 export async function deleteWorker(id: string): Promise<void> {
   const db = await getDB();
   await db.runAsync(`DELETE FROM workers WHERE id = ?`, [id]);
+}
+
+// ─── Personal account ────────────────────────────────────────────────────────
+
+export async function getAccountProfile(): Promise<AccountProfile | null> {
+  const db = await getDB();
+  return db.getFirstAsync<AccountProfile>(`SELECT * FROM account_profile WHERE id = 1`);
+}
+
+export async function saveAccountProfile(details: Pick<AccountProfile, 'name' | 'worker_code' | 'site_id'>): Promise<AccountProfile> {
+  const db = await getDB();
+  const existing = await getAccountProfile();
+  const normalized = {
+    name: details.name.trim(),
+    worker_code: details.worker_code.trim().toUpperCase(),
+    site_id: details.site_id.trim().toUpperCase(),
+  };
+
+  if (existing) {
+    await updateWorker(existing.worker_id, normalized);
+    await db.runAsync(
+      `UPDATE account_profile SET name = ?, worker_code = ?, site_id = ? WHERE id = 1`,
+      [normalized.name, normalized.worker_code, normalized.site_id]
+    );
+    return { ...existing, ...normalized };
+  }
+
+  const worker = await createWorker(normalized);
+  await db.runAsync(
+    `INSERT INTO account_profile (id, name, worker_code, site_id, worker_id) VALUES (1, ?, ?, ?, ?)`,
+    [worker.name, worker.worker_code, worker.site_id, worker.id]
+  );
+  return { id: 1, ...normalized, worker_id: worker.id };
 }
 
 // ─── Wristbands ───────────────────────────────────────────────────────────────
@@ -239,11 +293,13 @@ export async function getSettings(): Promise<AppSettings> {
   const map: Record<string, string> = {};
   rows.forEach(r => { map[r.key] = r.value; });
   return {
-    oel_twa_ppm: parseFloat(map.oel_twa_ppm ?? '5'),
-    oel_stel_ppm: parseFloat(map.oel_stel_ppm ?? '10'),
-    oel_ceiling_ppm: parseFloat(map.oel_ceiling_ppm ?? '10'),
-    risk_elevated_twa: parseFloat(map.risk_elevated_twa ?? '2.5'),
-    risk_high_twa: parseFloat(map.risk_high_twa ?? '5'),
+    // These safety values are deliberately not read from user-editable storage.
+    // A colourimetric wristband is an exposure aid, not a compliance monitor.
+    oel_twa_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+    oel_stel_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+    oel_ceiling_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+    risk_elevated_twa: OSHA_H2S_LIMITS.earlyWarningPpm,
+    risk_high_twa: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
     risk_elevated_index: parseFloat(map.risk_elevated_index ?? '10'),
     risk_high_index: parseFloat(map.risk_high_index ?? '25'),
     calibration_curve_version: map.calibration_curve_version ?? 'v1',
@@ -267,6 +323,35 @@ export async function getPinHash(): Promise<string | null> {
 export async function setPinHash(hash: string): Promise<void> {
   const db = await getDB();
   await db.runAsync(`INSERT OR REPLACE INTO auth (id, pin_hash) VALUES (1, ?)`, [hash]);
+}
+
+// ─── Translation cache ───────────────────────────────────────────────────────
+
+export async function getCachedTranslation(cacheKey: string): Promise<string | null> {
+  const db = await getDB();
+  const row = await db.getFirstAsync<{ translated_text: string }>(
+    `SELECT translated_text FROM translation_cache WHERE cache_key = ?`, [cacheKey]
+  );
+  return row?.translated_text ?? null;
+}
+
+export async function saveCachedTranslation(cacheKey: string, languageCode: string, sourceText: string, translatedText: string): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(
+    `INSERT OR REPLACE INTO translation_cache (cache_key, language_code, source_text, translated_text, updated_at) VALUES (?, ?, ?, ?, ?)`,
+    [cacheKey, languageCode, sourceText, translatedText, new Date().toISOString()]
+  );
+}
+
+export async function getPreference(key: string): Promise<string | null> {
+  const db = await getDB();
+  const row = await db.getFirstAsync<{ value: string }>(`SELECT value FROM app_preferences WHERE key = ?`, [key]);
+  return row?.value ?? null;
+}
+
+export async function setPreference(key: string, value: string): Promise<void> {
+  const db = await getDB();
+  await db.runAsync(`INSERT OR REPLACE INTO app_preferences (key, value) VALUES (?, ?)`, [key, value]);
 }
 
 // ─── Utility ──────────────────────────────────────────────────────────────────
