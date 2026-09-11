@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   },
   expiryMarker: {
     position: 'absolute',
-    top: '18%',
+    bottom: '16%',
     right: '18%',
     width: '25%',
     aspectRatio: 1,
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   },
   sensingMarker: {
     position: 'absolute',
-    bottom: '16%',
+    top: '18%',
     left: '12%',
     width: '29%',
     aspectRatio: 1,

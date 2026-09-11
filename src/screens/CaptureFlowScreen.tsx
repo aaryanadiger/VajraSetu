@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -172,7 +172,7 @@ export const CaptureFlowScreen: React.FC = () => {
       return <PermissionStep onPress={requestPermission} />;
     }
     return (
-      <SafeAreaView style={styles.safe}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
@@ -195,7 +195,7 @@ export const CaptureFlowScreen: React.FC = () => {
 
           <View style={styles.instructionCard}>
             <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the small indicator card in the frame')}</Text>
-            <Text style={styles.instructionBody}>{tx('keepSteady', 'Match the yellow circle and blue square to the guides. Keep the phone steady.')}</Text>
+            <Text style={styles.instructionBody}>{tx('keepSteady', 'Match the blue square and yellow circle to the guides. Keep the phone steady.')}</Text>
           </View>
 
           <View style={styles.cameraBottom}>
@@ -236,7 +236,7 @@ const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: 
     <View style={[styles.permissionIcon, { backgroundColor: '#FFF4DB' }]}><Ionicons name="scan-outline" size={34} color={theme.colors.semantic.warning} /></View>
     <Text style={styles.permissionTitle}>Try that scan again</Text>
     <Text style={styles.permissionBody}>{message}</Text>
-    <Text style={styles.retryTip}>Use even light. Centre only the small card, with the yellow circle in the upper-right guide and the blue square in the lower-left guide.</Text>
+    <Text style={styles.retryTip}>Use even light. Centre only the small card, with the blue square in the upper-left guide and the yellow circle in the lower-right guide.</Text>
     <Button label="Scan again" onPress={onRescan} style={styles.permissionButton} />
     <Button label="Cancel" variant="outline" onPress={onDone} style={styles.cancelButton} />
   </SafeAreaView>
@@ -340,10 +340,23 @@ const styles = StyleSheet.create({
   cameraTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   cameraButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00000088', alignItems: 'center', justifyContent: 'center' },
   cameraButtonActive: { backgroundColor: '#6e5b0088' },
-  instructionCard: { alignSelf: 'center', backgroundColor: '#00000099', borderRadius: 18, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.lg, maxWidth: 320 },
+  instructionCard: {
+    position: 'absolute',
+    top: '15%',
+    left: theme.spacing.xl,
+    right: theme.spacing.xl,
+    alignSelf: 'center',
+    backgroundColor: '#07111FAD',
+    borderWidth: 1,
+    borderColor: '#FFFFFF2E',
+    borderRadius: 18,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    maxWidth: 360,
+  },
   instructionTitle: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
   instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
-  cameraBottom: { alignItems: 'center' },
+  cameraBottom: { alignItems: 'center', paddingBottom: 112 },
   captureButton: { alignItems: 'center', gap: theme.spacing.sm },
   captureButtonDisabled: { opacity: 0.55 },
   captureButtonInner: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#fff', borderWidth: 5, borderColor: '#ffffff99', justifyContent: 'center', alignItems: 'center' },

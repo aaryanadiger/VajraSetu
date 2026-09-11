@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform, Text } from 'react-native';
 import Svg, { Path, Rect, Line, Polyline } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { theme } from '../theme';
 
@@ -11,7 +12,20 @@ const INACTIVE_COLOR = '#9CA3AF';
 export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
   return (
     <View style={styles.container}>
-      <BlurView intensity={42} tint="light" style={styles.navBar}>
+      <BlurView
+        intensity={Platform.OS === 'ios' ? 72 : 48}
+        tint={Platform.OS === 'ios' ? 'systemUltraThinMaterialLight' : 'light'}
+        style={styles.navBar}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={['rgba(255,255,255,0.66)', 'rgba(241,248,255,0.30)', 'rgba(255,255,255,0.46)']}
+          locations={[0, 0.52, 1]}
+          start={{ x: 0.08, y: 0 }}
+          end={{ x: 0.92, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View pointerEvents="none" style={styles.glassGlow} />
         <View pointerEvents="none" style={styles.glassHighlight} />
         {state.routes.map((route, index) => {
           const isFocused = state.index === index;
@@ -171,26 +185,36 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     backgroundColor: 'transparent',
+    borderRadius: 30,
+    shadowColor: '#0B2038',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 22,
+    elevation: 14,
   },
   navBar: {
-    backgroundColor: 'rgba(255, 255, 255, 0.86)',
+    backgroundColor: 'rgba(244, 249, 255, 0.40)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.94)',
-    borderRadius: 26,
+    borderColor: 'rgba(255, 255, 255, 0.74)',
+    borderRadius: 30,
     overflow: 'hidden',
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingVertical: 9,
-    shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    elevation: 10,
+  },
+  glassGlow: {
+    position: 'absolute',
+    width: 130,
+    height: 90,
+    borderRadius: 65,
+    right: -16,
+    top: -48,
+    backgroundColor: 'rgba(255,255,255,0.34)',
   },
   glassHighlight: {
-    position: 'absolute', top: 0, left: 18, right: 18, height: 1,
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    position: 'absolute', top: 1, left: 22, right: 22, height: 1,
+    backgroundColor: 'rgba(255,255,255,0.96)',
   },
   navItem: {
     flex: 1,
@@ -202,7 +226,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   navItemActive: {
-    backgroundColor: 'rgba(225, 241, 255, 0.88)',
+    backgroundColor: 'rgba(255,255,255,0.48)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
+    shadowColor: '#2B96FF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.10,
+    shadowRadius: 10,
+    elevation: 2,
   },
   navLabel: {
     fontFamily: theme.typography.family.medium,
