@@ -90,11 +90,11 @@ export interface ShiftWithReading extends Shift {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
-  oel_twa_ppm: number;         // Compatibility field: OSHA general-industry ceiling
-  oel_stel_ppm: number;        // Compatibility field: OSHA general-industry ceiling
-  oel_ceiling_ppm: number;     // OSHA general-industry ceiling
+  oel_twa_ppm: number;         // India Factories Act Schedule II: 8-hour TWA
+  oel_stel_ppm: number;        // India Factories Act Schedule II: 15-minute STEL
+  oel_ceiling_ppm: number;     // Primary worker-facing reference value (8-hour TWA)
   risk_elevated_twa: number;   // Internal early-warning threshold
-  risk_high_twa: number;       // OSHA ceiling threshold
+  risk_high_twa: number;       // India Factories Act Schedule II TWA threshold
   risk_elevated_index: number;
   risk_high_index: number;
   calibration_curve_version: string;
@@ -102,19 +102,19 @@ export interface AppSettings {
 }
 
 /** Fixed H₂S reference values. Workers must never be able to change these. */
-export const OSHA_H2S_LIMITS = {
-  generalIndustryCeilingPpm: 20,
-  maximumPeakPpm: 50,
-  maximumPeakMinutes: 10,
-  earlyWarningPpm: 10,
+export const INDIA_FACTORY_H2S_LIMITS = {
+  scheduleIiTwaPpm: 10,
+  scheduleIiStelPpm: 15,
+  scheduleIiStelMinutes: 15,
+  earlyWarningPpm: 5,
 } as const;
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  oel_twa_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-  oel_stel_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-  oel_ceiling_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-  risk_elevated_twa: OSHA_H2S_LIMITS.earlyWarningPpm,
-  risk_high_twa: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+  oel_twa_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
+  oel_stel_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiStelPpm,
+  oel_ceiling_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
+  risk_elevated_twa: INDIA_FACTORY_H2S_LIMITS.earlyWarningPpm,
+  risk_high_twa: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
   risk_elevated_index: 10,
   risk_high_index: 25,
   calibration_curve_version: 'v1',

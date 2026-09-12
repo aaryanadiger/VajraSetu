@@ -85,7 +85,7 @@ export const HomeScreen: React.FC = () => {
   const band: RiskBand = latest?.band_valid ? latest.risk_band : latest ? 'invalid' : 'low';
   const status = riskMeta(band);
   const statusLabel = sarvamText(status.label);
-  const oel = settings?.oel_twa_ppm ?? 5;
+  const oel = settings?.oel_twa_ppm ?? 10;
   const exposure = latest?.band_valid ? latest.cumulative_ppm_hr : 0;
   const progress = latest?.band_valid ? Math.min(1, latest.twa_ppm / oel) : 0;
   const selectedLanguage = LANGUAGE_OPTIONS.find(item => item.code === language) ?? LANGUAGE_OPTIONS[0];
@@ -134,7 +134,7 @@ export const HomeScreen: React.FC = () => {
               <SegmentedMeter fraction={progress} color={status.color} />
               <View style={styles.meterLabels}>
                 <Text style={styles.meterLabel}>0</Text>
-                <Text style={styles.meterLimit}>{tx('referenceLimit', 'OSHA ceiling')}: {oel} ppm</Text>
+              <Text style={styles.meterLimit}>{tx('referenceLimit', 'India TWA limit')}: {oel} ppm</Text>
                 <Text style={styles.meterLabel}>{oel}</Text>
               </View>
             </>
@@ -241,8 +241,8 @@ const GUIDE_CONTENT = {
     items: ['Keep the patch clean, dry, and visible.', 'Place the full patch inside the camera frame after your shift.', 'Use even light and hold the phone steady.', 'If the band is invalid, replace it and tell your supervisor.'],
   },
   safety: {
-    title: 'OSHA H₂S safety guidelines', icon: 'shield-checkmark-outline' as const,
-    items: ['Never rely on the smell of H₂S; it can disable your sense of smell.', 'If an alarm or warning appears, leave the area and alert your supervisor.', 'Move crosswind or upwind toward fresh air. Do not attempt an untrained rescue.', 'OSHA general-industry reference: 20 ppm ceiling; 50 ppm peak is a limited 10-minute exception.'],
+    title: 'Indian factory H₂S safety guidance', icon: 'shield-checkmark-outline' as const,
+    items: ['Know the H₂S hazards and the safety measures for your work area.', 'Follow your factory’s safe work instructions, training, supervision, ventilation, and PPE requirements.', 'If an alarm or warning appears, stop work, move to fresh air, and inform your supervisor.', 'Do not enter or attempt rescue in a gas-affected area unless trained, authorised, and using the required protective equipment.', 'Reference: India Factories Act Schedule II lists H₂S at 10 ppm for 8-hour TWA and 15 ppm for 15-minute STEL. Use your site gas detector and emergency plan for immediate hazards.'],
   },
 };
 

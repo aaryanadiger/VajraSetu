@@ -97,7 +97,7 @@ export function computeTWA(
  *  - The simplified index = TWA-weighted band contribution + maxPpmEstimate.
  *  - Clearly labeled "estimated_single_sample" in all outputs.
  *
- * Band thresholds (configurable in settings, default = India/ACGIH values):
+ * Band thresholds (fixed app safety levels, with Indian statutory values as the reference):
  *   ≤1 ppm:   very low (H2S01 band)
  *   1–5 ppm:  low-moderate (H2S1 band)
  *   5–10 ppm: moderate-high (H2S5 band)

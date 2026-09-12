@@ -48,7 +48,7 @@ export const DashboardScreen: React.FC = () => {
     ? validReadings.reduce((s, r) => s + r.twa_ppm, 0) / validReadings.length
     : 0;
 
-  const oel = settings?.oel_twa_ppm ?? 5;
+  const oel = settings?.oel_twa_ppm ?? 10;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -92,7 +92,7 @@ export const DashboardScreen: React.FC = () => {
                   : theme.colors.semantic.success,
             }]} />
           </View>
-          <Text style={styles.oelLabel}>OEL threshold: {oel} ppm TWA (configurable in Settings)</Text>
+          <Text style={styles.oelLabel}>India Schedule II reference: {oel} ppm TWA (fixed)</Text>
         </Card>
 
         {/* High-risk workers */}

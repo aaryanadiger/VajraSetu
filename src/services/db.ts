@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { AccountProfile, Worker, Shift, Wristband, Reading, AppSettings, DEFAULT_SETTINGS, OSHA_H2S_LIMITS } from '../types';
+import { AccountProfile, Worker, Shift, Wristband, Reading, AppSettings, DEFAULT_SETTINGS, INDIA_FACTORY_H2S_LIMITS } from '../types';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -295,11 +295,11 @@ export async function getSettings(): Promise<AppSettings> {
   return {
     // These safety values are deliberately not read from user-editable storage.
     // A colourimetric wristband is an exposure aid, not a compliance monitor.
-    oel_twa_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-    oel_stel_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-    oel_ceiling_ppm: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
-    risk_elevated_twa: OSHA_H2S_LIMITS.earlyWarningPpm,
-    risk_high_twa: OSHA_H2S_LIMITS.generalIndustryCeilingPpm,
+    oel_twa_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
+    oel_stel_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiStelPpm,
+    oel_ceiling_ppm: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
+    risk_elevated_twa: INDIA_FACTORY_H2S_LIMITS.earlyWarningPpm,
+    risk_high_twa: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
     risk_elevated_index: parseFloat(map.risk_elevated_index ?? '10'),
     risk_high_index: parseFloat(map.risk_high_index ?? '25'),
     calibration_curve_version: map.calibration_curve_version ?? 'v1',

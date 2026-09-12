@@ -23,7 +23,8 @@ All data is stored locally in an **Expo SQLite** database configured with Write-
 Hydrogen Sulfide is a colorless, acutely neurotoxic, and respiratory-paralyzing gas prevalent in sewers, manholes, wastewater treatment plants, and petrochemical sites:
 * **0.01 – 1.5 ppm**: Olfactory perception threshold (characteristic "rotten egg" odor).
 * **2.0 – 5.0 ppm**: Eye irritation, headache, nausea, bronchial constriction.
-* **10.0 ppm**: Permissible Exposure Limit / 8-hour Time-Weighted Average (India Factories Act 1948, ACGIH).
+* **10.0 ppm**: 8-hour Time-Weighted Average reference in the Second Schedule of the India Factories Act, 1948.
+* **15.0 ppm**: 15-minute Short-Term Exposure Limit reference in the Second Schedule of the India Factories Act, 1948.
 * **20.0 – 50.0 ppm**: Rapid olfactory nerve paralysis. Workers lose their sense of smell within minutes, creating a lethal illusion of safety.
 * **100.0+ ppm**: Immediately Dangerous to Life or Health (IDLH); pulmonary edema, acute chemical asphyxiation, instant collapse, and fatalities.
 
@@ -114,7 +115,7 @@ Adapted from occupational epidemiology models (**Austigard & Smedbold 2022**, *A
 | **High Risk** | $> 5.0\text{ ppm}$ | $> 25.0$ | Statutory OEL breach; medical evaluation and incident log. |
 | **Invalid** | Expiry dot out of bounds | N/A | Band corrupted/expired; reject reading and rescan. |
 
-*Statutory limits align with the **India Factories Act (1948)** (10 ppm TWA, 15 ppm STEL) and **ACGIH** guidelines.*
+*Statutory reference values follow the **India Factories Act (1948), Second Schedule** (10 ppm TWA, 15 ppm STEL). State factory rules and the site’s approved emergency procedure also apply.*
 
 ---
 

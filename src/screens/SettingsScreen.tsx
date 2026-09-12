@@ -12,7 +12,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadings, getWorkers, getShiftsByWorker } from '../services/db';
 import { generateCSV, getExportFilename } from '../services/csv';
-import { AccountProfile, AppSettings, DEFAULT_SETTINGS, OSHA_H2S_LIMITS } from '../types';
+import { AccountProfile, AppSettings, DEFAULT_SETTINGS, INDIA_FACTORY_H2S_LIMITS } from '../types';
 import { getCurve } from '../services/calibration';
 import * as FileSystem from 'expo-file-system/legacy';
 
@@ -116,21 +116,21 @@ export const SettingsScreen: React.FC = () => {
           <Text style={styles.pageTitle}>{t('Settings')}</Text>
         </View>
 
-        {/* ── OSHA reference limits — intentionally read-only ── */}
+        {/* ── Indian factory safety reference — intentionally read-only ── */}
         <Card>
           <View style={styles.cardHeaderRow}>
             <Ionicons name="shield-checkmark-outline" size={20} color={theme.colors.text.primary} />
-            <Text style={styles.cardTitle}>{t('H₂S safety reference')}</Text>
+            <Text style={styles.cardTitle}>{t('Indian factory H₂S reference')}</Text>
           </View>
           <View style={styles.limitRow}>
-            <View><Text style={styles.limitLabel}>{t('General industry ceiling')}</Text><Text style={styles.limitNote}>{t('Must not be exceeded')}</Text></View>
-            <Text style={styles.limitValue}>{OSHA_H2S_LIMITS.generalIndustryCeilingPpm} ppm</Text>
+            <View><Text style={styles.limitLabel}>{t('8-hour TWA limit')}</Text><Text style={styles.limitNote}>{t('Schedule II reference')}</Text></View>
+            <Text style={styles.limitValue}>{INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm} ppm</Text>
           </View>
           <View style={styles.limitRow}>
-            <View><Text style={styles.limitLabel}>{t('Maximum peak')}</Text><Text style={styles.limitNote}>{t('One period of up to')} {OSHA_H2S_LIMITS.maximumPeakMinutes} {t('minutes; only when no other measurable exposure occurs')}</Text></View>
-            <Text style={styles.limitValue}>{OSHA_H2S_LIMITS.maximumPeakPpm} ppm</Text>
+            <View><Text style={styles.limitLabel}>{t('15-minute STEL')}</Text><Text style={styles.limitNote}>{t('Schedule II reference')}</Text></View>
+            <Text style={styles.limitValue}>{INDIA_FACTORY_H2S_LIMITS.scheduleIiStelPpm} ppm</Text>
           </View>
-          <Text style={styles.safetyDisclaimer}>{t('This wristband estimates cumulative exposure. It cannot measure instantaneous peaks or establish OSHA compliance. Follow your site’s H₂S procedure and supervisor instructions.')}</Text>
+          <Text style={styles.safetyDisclaimer}>{t('This wristband estimates cumulative exposure. It cannot measure instantaneous peaks or establish legal compliance. Follow your site’s H₂S procedure and supervisor instructions.')}</Text>
         </Card>
 
         {/* ── Calibration ── */}

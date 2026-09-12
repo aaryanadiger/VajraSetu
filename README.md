@@ -47,7 +47,8 @@ VarjraSetu bridges this gap by transforming an ultra-low-cost passive chemical w
 H2S is a lethal neurotoxic and respiratory poison with the following physiological profiles:
 - 0.01 - 1.5 ppm: Olfactory perception threshold (rotten egg odor).
 - 2 - 5 ppm: Prolonged exposure causes eye irritation, headache, and bronchial constriction.
-- 10 ppm: Indian Factory Act / ACGIH 8-hour Time-Weighted Average limit.
+- 10 ppm: India Factories Act, 1948, Second Schedule 8-hour Time-Weighted Average limit.
+- 15 ppm: India Factories Act, 1948, Second Schedule 15-minute Short-Term Exposure Limit.
 - 20 - 50 ppm: Olfactory nerve paralysis (loss of smell), leading to false perception of safety.
 - 100+ ppm: Immediately Dangerous to Life or Health (IDLH); pulmonary edema and respiratory failure.
 
@@ -165,9 +166,9 @@ This metric flags shifts characterized by elevated baseline averages and suspect
 
 | Classification | TWA Threshold (ppm) | H2S Index | Action Protocol |
 | :--- | :--- | :--- | :--- |
-| **Low Exposure** | < 2.5 ppm | < 10.0 | Shift within normal parameters. Routine sign-off. |
-| **Elevated** | 2.5 - 5.0 ppm | 10.0 - 25.0 | Medical observation advised. Ventilation check required. |
-| **High Risk** | > 5.0 ppm | > 25.0 | Statutory OEL breach. Immediate health check and incident report. |
+| **Low Exposure** | < 5.0 ppm | < 10.0 | Continue site procedure; routine sign-off. |
+| **Elevated** | 5.0 - < 10.0 ppm | 10.0 - < 25.0 | Pause when safe; tell the supervisor and review ventilation/PPE. |
+| **High Risk** | ≥ 10.0 ppm | ≥ 25.0 | Leave the affected area, alert the supervisor, and follow the site emergency plan. |
 | **Invalid** | Expiry out of bounds | N/A | Band corrupted. Rescan with backup or log hardware failure. |
 
 ---
@@ -201,7 +202,7 @@ This metric flags shifts characterized by elevated baseline averages and suspect
 |   1. Piecewise Linear Interpolation (h2s_curve_v1.json)           |
 |   2. Shift-Duration TWA (ppm) Computation                         |
 |   3. Austigard & Smedbold Single-Sample H2S Index Calculation     |
-|   4. Regulatory Threshold Classification (India OEL / ACGIH)      |
+|   4. Regulatory Threshold Classification (India Factories Act)    |
 +-------------------------------------------------------------------+
                                   |
                                   v
@@ -403,20 +404,18 @@ Custom calibration curves can be loaded into `/calibration` without modifying al
 }
 ```
 
-Thresholds for regulatory alerts can be configured in `SettingsScreen.tsx` or via the database `settings` table:
-- `oel_twa_ppm`: Default `5.0` ppm
-- `oel_stel_ppm`: Default `10.0` ppm
-- `oel_ceiling_ppm`: Default `10.0` ppm
+Safety reference values are fixed in `src/types/index.ts` and are not editable by workers:
+- `oel_twa_ppm`: India Factories Act Schedule II 8-hour TWA, `10` ppm
+- `oel_stel_ppm`: India Factories Act Schedule II 15-minute STEL, `15` ppm
+- `oel_ceiling_ppm`: Primary worker-facing TWA reference, `10` ppm
 
 ---
 
 ## Regulatory Standards and Compliance
 
-The calculation models align with statutory guidelines:
-- **India Factories Act (1948)** / **Schedule II Permissible Levels**: TWA 10 ppm, STEL 15 ppm (Configurable to lower safety bounds).
-- **American Conference of Governmental Industrial Hygienists (ACGIH)**: TLV-TWA 1.0 ppm, TLV-STEL 5.0 ppm.
-- **National Institute for Occupational Safety and Health (NIOSH)**: REL Ceiling 10 ppm (10 min), IDLH 100 ppm.
-- **Occupational Safety and Health Administration (OSHA)**: General Industry Ceiling 20 ppm, Peak 50 ppm (10 min max).
+The worker-facing safety reference follows the **India Factories Act, 1948, Second Schedule**: H₂S is listed at 10 ppm for an 8-hour TWA and 15 ppm for a 15-minute STEL. The Act also places duties on the occupier to provide safe systems, information, instruction, training, supervision, and emergency planning for hazardous processes. State factory rules and the site’s approved emergency procedure also apply.
+
+The wristband is a cumulative exposure aid. It does not measure an instantaneous 15-minute STEL, replace a calibrated gas detector, or establish legal compliance by itself.
 
 ---
 

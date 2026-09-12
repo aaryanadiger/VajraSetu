@@ -292,7 +292,7 @@ const ResultStep: React.FC<{
   }
 
   const copy = riskCopy(result.risk_band, language);
-  const oel = settings?.oel_twa_ppm ?? 5;
+  const oel = settings?.oel_twa_ppm ?? 10;
   return (
     <SafeAreaView style={styles.resultScreen}>
       <ScrollView contentContainerStyle={styles.resultContent}>
@@ -317,7 +317,7 @@ const ResultStep: React.FC<{
           <Text style={styles.detailLabel}>{tx('latestExposure', 'Your latest reading')}</Text>
           <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.twa_ppm.toFixed(2)}</Text><Text style={styles.bigUnit}>ppm TWA</Text></View>
           <View style={styles.resultRule} />
-          <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'OSHA ceiling')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'India TWA limit')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>Cumulative exposure</Text><Text style={styles.detailValue}>{result.cumulative_ppm_hr.toFixed(1)} ppm·hr</Text></View>
         </Card>
 
