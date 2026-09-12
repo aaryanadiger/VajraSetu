@@ -209,10 +209,11 @@ interface RelativeRegion {
 
 // These zones match the on-screen guides when the small indicator card is
 // aligned with the square camera frame. The CuSO4 pad sits upper-left, the
-// FeSO4 dot sits lower-right, and plain white card is sampled upper-right.
+// FeSO4 dot sits toward the centre-right, and plain white card is sampled
+// upper-right.
 const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
   reference: { x: 0.62, y: 0.12, width: 0.16, height: 0.16 },
-  expiry: { x: 0.55, y: 0.55, width: 0.30, height: 0.30, circle: true },
+  expiry: { x: 0.40, y: 0.40, width: 0.25, height: 0.25, circle: true },
   sensing: { x: 0.10, y: 0.16, width: 0.30, height: 0.30 },
 };
 

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useLanguage } from '../navigation/RootNavigator';
@@ -34,6 +35,7 @@ import { AppSettings, ProcessingResult, RiskBand } from '../types';
 import { AppLanguage, translateUi } from '../services/translation';
 
 type Step = 'camera' | 'processing' | 'result' | 'unreadable';
+type AlignmentStatus = 'checking' | 'aligned' | 'adjust' | 'lighting' | 'unavailable';
 
 const PIPELINE_STAGES = [
   'Checking the card position',
@@ -72,7 +74,12 @@ export const CaptureFlowScreen: React.FC = () => {
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureProblem, setCaptureProblem] = useState('');
+  const [alignmentStatus, setAlignmentStatus] = useState<AlignmentStatus>('checking');
   const cameraRef = useRef<CameraView>(null);
+  const alignmentCheckInFlight = useRef(false);
+  const alignmentSuccesses = useRef(0);
+  const alignmentFailures = useRef(0);
+  const alignmentStatusRef = useRef<AlignmentStatus>('checking');
   const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
     const local = translateUi(key, language, fallback);
     return local === fallback ? sarvamText(fallback) : local;
@@ -86,8 +93,72 @@ export const CaptureFlowScreen: React.FC = () => {
     setTorchOn(Boolean(route.params?.initialTorch));
   }, [route.params?.initialTorch]);
 
+  useEffect(() => {
+    if (step !== 'camera' || !cameraReady || !permission?.granted) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const updateAlignmentStatus = (next: AlignmentStatus) => {
+      alignmentStatusRef.current = next;
+      setAlignmentStatus(next);
+    };
+
+    const checkAlignment = async () => {
+      if (cancelled || alignmentCheckInFlight.current || alignmentStatusRef.current === 'unavailable') return;
+      alignmentCheckInFlight.current = true;
+      let previewUri: string | undefined;
+      let scannerUnavailable = false;
+
+      try {
+        // expo-camera does not expose raw preview frames, so sample a small
+        // still every second. Two readable samples are required before the
+        // UI declares the card aligned, which keeps the status from flickering.
+        const preview = await cameraRef.current?.takePictureAsync({
+          quality: 0.15,
+          base64: true,
+          exif: false,
+          skipProcessing: true,
+        });
+        previewUri = preview?.uri;
+        await extractRegionsFromImage(preview?.base64 ?? '');
+
+        alignmentFailures.current = 0;
+        alignmentSuccesses.current += 1;
+        if (alignmentSuccesses.current >= 2) updateAlignmentStatus('aligned');
+      } catch (error) {
+        alignmentSuccesses.current = 0;
+        alignmentFailures.current += 1;
+        const nextStatus: AlignmentStatus = error instanceof CaptureError && error.problem === 'poor_lighting'
+          ? 'lighting'
+          : error instanceof CaptureError && error.problem === 'native_scanner_unavailable'
+            ? 'unavailable'
+            : 'adjust';
+        scannerUnavailable = nextStatus === 'unavailable';
+
+        // Once stable, tolerate one poor frame so small hand movements do
+        // not immediately remove the ready confirmation.
+        if (nextStatus === 'unavailable' || alignmentFailures.current >= 2 || alignmentStatusRef.current !== 'aligned') {
+          updateAlignmentStatus(nextStatus);
+        }
+      } finally {
+        alignmentCheckInFlight.current = false;
+        if (previewUri) void FileSystem.deleteAsync(previewUri, { idempotent: true }).catch(() => undefined);
+        if (!cancelled && !scannerUnavailable) {
+          timer = setTimeout(() => void checkAlignment(), 900);
+        }
+      }
+    };
+
+    void checkAlignment();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [cameraReady, permission?.granted, step]);
+
   async function handleCapture() {
-    if (!settings || capturing) return;
+    if (!settings || capturing || alignmentStatus !== 'aligned') return;
     setCapturing(true);
     setStep('processing');
     setStageIndex(0);
@@ -162,6 +233,10 @@ export const CaptureFlowScreen: React.FC = () => {
     setCameraReady(false);
     setCapturing(false);
     setCaptureProblem('');
+    alignmentSuccesses.current = 0;
+    alignmentFailures.current = 0;
+    alignmentStatusRef.current = 'checking';
+    setAlignmentStatus('checking');
   }
 
   if (step === 'camera') {
@@ -181,7 +256,7 @@ export const CaptureFlowScreen: React.FC = () => {
           onCameraReady={() => setCameraReady(true)}
           onMountError={() => setCameraReady(false)}
         />
-        <CameraOverlay />
+        <CameraOverlay color={alignmentStatus === 'aligned' ? '#34D399' : alignmentStatus === 'lighting' ? '#FFD34D' : '#FFFFFF'} />
 
         <View style={styles.cameraChrome}>
           <View style={styles.cameraTopRow}>
@@ -196,12 +271,35 @@ export const CaptureFlowScreen: React.FC = () => {
           <View style={styles.instructionCard}>
             <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the small indicator card in the frame')}</Text>
             <Text style={styles.instructionBody}>{tx('keepSteady', 'Match the blue square and yellow circle to the guides. Keep the phone steady.')}</Text>
+            <View style={[
+              styles.alignmentPill,
+              alignmentStatus === 'aligned' && styles.alignmentPillReady,
+              alignmentStatus === 'lighting' && styles.alignmentPillWarning,
+              alignmentStatus === 'unavailable' && styles.alignmentPillWarning,
+            ]}>
+              <Ionicons
+                name={alignmentStatus === 'aligned' ? 'checkmark-circle' : alignmentStatus === 'lighting' ? 'sunny-outline' : alignmentStatus === 'unavailable' ? 'phone-portrait-outline' : 'scan-outline'}
+                size={16}
+                color={alignmentStatus === 'aligned' ? '#6EE7B7' : alignmentStatus === 'lighting' ? '#FFD34D' : '#FFFFFF'}
+              />
+              <Text accessibilityLiveRegion="polite" style={[styles.alignmentText, alignmentStatus === 'aligned' && styles.alignmentTextReady]}>
+                {alignmentStatus === 'aligned'
+                  ? tx('cardAligned', 'Aligned — ready to scan')
+                  : alignmentStatus === 'lighting'
+                    ? tx('needEvenLight', 'Use even light')
+                    : alignmentStatus === 'unavailable'
+                      ? tx('scannerNeedsBuild', 'Open the development build to scan')
+                      : alignmentStatus === 'checking'
+                        ? tx('checkingPosition', 'Checking card position…')
+                        : tx('moveCard', 'Move the card into the guides')}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.cameraBottom}>
-            <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing) && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing} accessibilityRole="button" accessibilityLabel="Capture wristband">
+            <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing || alignmentStatus !== 'aligned') && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing || alignmentStatus !== 'aligned'} accessibilityRole="button" accessibilityLabel="Capture wristband">
               <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
-              <Text style={styles.captureLabel}>{cameraReady ? tx('tapToScan', 'Tap to scan') : tx('startingCamera', 'Starting camera…')}</Text>
+              <Text style={styles.captureLabel}>{!cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : tx('alignBeforeScan', 'Align card to scan')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -236,7 +334,7 @@ const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: 
     <View style={[styles.permissionIcon, { backgroundColor: '#FFF4DB' }]}><Ionicons name="scan-outline" size={34} color={theme.colors.semantic.warning} /></View>
     <Text style={styles.permissionTitle}>Try that scan again</Text>
     <Text style={styles.permissionBody}>{message}</Text>
-    <Text style={styles.retryTip}>Use even light. Centre only the small card, with the blue square in the upper-left guide and the yellow circle in the lower-right guide.</Text>
+    <Text style={styles.retryTip}>Use even light. Centre only the small card and match the blue square and yellow circle to their guides.</Text>
     <Button label="Scan again" onPress={onRescan} style={styles.permissionButton} />
     <Button label="Cancel" variant="outline" onPress={onDone} style={styles.cancelButton} />
   </SafeAreaView>
@@ -356,6 +454,11 @@ const styles = StyleSheet.create({
   },
   instructionTitle: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
   instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
+  alignmentPill: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF1C' },
+  alignmentPillReady: { backgroundColor: '#06764766', borderWidth: 1, borderColor: '#6EE7B755' },
+  alignmentPillWarning: { backgroundColor: '#A15C003D' },
+  alignmentText: { color: '#FFFFFFE6', fontFamily: theme.typography.family.medium, fontSize: 12 },
+  alignmentTextReady: { color: '#D1FADF' },
   cameraBottom: { alignItems: 'center', paddingBottom: 112 },
   captureButton: { alignItems: 'center', gap: theme.spacing.sm },
   captureButtonDisabled: { opacity: 0.55 },

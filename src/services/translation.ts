@@ -27,7 +27,8 @@ export type TranslationKey =
   | 'shiftLength' | 'tapToScan' | 'startingCamera' | 'checkingBand' | 'staysOnPhone'
   | 'alignImage' | 'readPatches' | 'checkBand' | 'calculateExposure' | 'prepareResult'
   | 'replaceBand' | 'replaceBandBody' | 'whatToDo' | 'newBand' | 'tellSupervisor'
-  | 'chooseLanguage' | 'languageOffline' | 'sarvamReady' | 'account';
+  | 'chooseLanguage' | 'languageOffline' | 'sarvamReady' | 'account'
+  | 'checkingPosition' | 'cardAligned' | 'moveCard' | 'needEvenLight' | 'alignBeforeScan' | 'scannerNeedsBuild';
 
 const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
   'en-IN': {},
@@ -78,6 +79,12 @@ const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
     languageOffline: 'भाषा फोन में सेव बा, इंटरनेट बिना भी चली।',
     sarvamReady: 'Sarvam AI अनुवाद उपलब्ध बा',
     account: 'खाता',
+    checkingPosition: 'कार्ड के जगह जाँचत बा…',
+    cardAligned: 'ठीक से मिलल बा — स्कैन करे लायक',
+    moveCard: 'कार्ड के गाइड में लाईं',
+    needEvenLight: 'बराबर रोशनी करीं',
+    alignBeforeScan: 'स्कैन से पहिले कार्ड मिलाईं',
+    scannerNeedsBuild: 'स्कैन करे खातिर डेवलपमेंट बिल्ड खोलीं',
   },
   'hi-IN': {
     safetyCheck: 'आपकी सुरक्षा जाँच',
@@ -126,6 +133,12 @@ const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
     languageOffline: 'भाषा फोन में सेव है और इंटरनेट के बिना भी चलेगी।',
     sarvamReady: 'Sarvam AI अनुवाद उपलब्ध है',
     account: 'खाता',
+    checkingPosition: 'कार्ड की स्थिति जाँची जा रही है…',
+    cardAligned: 'सही जगह पर है — स्कैन के लिए तैयार',
+    moveCard: 'कार्ड को गाइड में रखें',
+    needEvenLight: 'समान रोशनी करें',
+    alignBeforeScan: 'स्कैन से पहले कार्ड मिलाएं',
+    scannerNeedsBuild: 'स्कैन करने के लिए डेवलपमेंट बिल्ड खोलें',
   },
   'mr-IN': {
     safetyCheck: 'तुमची सुरक्षा तपासणी',
@@ -174,6 +187,12 @@ const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
     languageOffline: 'भाषा फोनमध्ये सेव्ह आहे आणि इंटरनेटशिवायही चालेल.',
     sarvamReady: 'Sarvam AI भाषांतर उपलब्ध',
     account: 'खाते',
+    checkingPosition: 'कार्डची जागा तपासत आहे…',
+    cardAligned: 'योग्यरीत्या जुळले — स्कॅनसाठी तयार',
+    moveCard: 'कार्ड गाइडमध्ये ठेवा',
+    needEvenLight: 'समान प्रकाश वापरा',
+    alignBeforeScan: 'स्कॅनपूर्वी कार्ड जुळवा',
+    scannerNeedsBuild: 'स्कॅनसाठी डेव्हलपमेंट बिल्ड उघडा',
   },
   'kn-IN': {
     safetyCheck: 'ನಿಮ್ಮ ಸುರಕ್ಷತಾ ತಪಾಸಣೆ',
@@ -222,6 +241,12 @@ const copy: Record<AppLanguage, Partial<Record<TranslationKey, string>>> = {
     languageOffline: 'ಭಾಷೆಯನ್ನು ಫೋನ್‌ನಲ್ಲಿ ಉಳಿಸಲಾಗಿದೆ; ಇಂಟರ್ನೆಟ್ ಇಲ್ಲದಿದ್ದರೂ ಕೆಲಸ ಮಾಡುತ್ತದೆ.',
     sarvamReady: 'Sarvam AI ಅನುವಾದ ಲಭ್ಯವಿದೆ',
     account: 'ಖಾತೆ',
+    checkingPosition: 'ಕಾರ್ಡ್ ಸ್ಥಾನವನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ…',
+    cardAligned: 'ಸರಿಯಾಗಿ ಹೊಂದಿಸಲಾಗಿದೆ — ಸ್ಕ್ಯಾನ್‌ಗೆ ಸಿದ್ಧ',
+    moveCard: 'ಕಾರ್ಡ್ ಅನ್ನು ಮಾರ್ಗದರ್ಶಿಗಳಲ್ಲಿ ಇರಿಸಿ',
+    needEvenLight: 'ಸಮ ಬೆಳಕನ್ನು ಬಳಸಿ',
+    alignBeforeScan: 'ಸ್ಕ್ಯಾನ್ ಮಾಡುವ ಮೊದಲು ಕಾರ್ಡ್ ಹೊಂದಿಸಿ',
+    scannerNeedsBuild: 'ಸ್ಕ್ಯಾನ್ ಮಾಡಲು ಡೆವಲಪ್ಮೆಂಟ್ ಬಿಲ್ಡ್ ತೆರೆಯಿರಿ',
   },
 };
 
