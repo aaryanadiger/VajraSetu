@@ -151,12 +151,13 @@ export function computeDeltaE(targetRGB: RGB, referenceRGB: RGB): number {
 // ─── Region extraction ──────────────────────────────────────────────────────
 
 /**
- * Reads the fixed indicator locations from a centred indicator card.
+ * Reads the indicator locations from a card held within the central camera guide.
  *
- * The camera overlay makes the physical card's position repeatable, which is
- * more dependable than trying to learn a wristband shape from an unlabelled
- * image set. OpenCV decodes the JPEG; the sampling stays deterministic and
- * auditable TypeScript.
+ * This deliberately does not use a learned model. The coloured pads have known
+ * positions on the card, so a bounded search for the white reference and two
+ * coloured pads is repeatable, works offline, and can be checked in code.
+ * OpenCV decodes the JPEG; the sampling stays deterministic and auditable
+ * TypeScript.
  */
 export async function extractRegionsFromImage(imageBase64: string): Promise<CaptureRegions> {
   const isExpoGo = isRunningInExpoGo();
@@ -217,26 +218,30 @@ const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion
   sensing: { x: 0.10, y: 0.16, width: 0.30, height: 0.30 },
 };
 
+interface CardBounds {
+  left: number;
+  top: number;
+  side: number;
+}
+
+interface CardCandidate {
+  bounds: CardBounds;
+  score: number;
+}
+
 function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
   if (image.channels < 3 || image.cols < 180 || image.rows < 180) {
     throw new CaptureError('card_not_in_frame', 'Move the indicator card closer and keep it inside the frame.');
   }
 
-  // Sampling only the centre prevents the paper strap, hand and work surface
-  // from changing the colour measurement.
-  const side = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
-  const card = {
-    left: Math.round((image.cols - side) / 2),
-    top: Math.round((image.rows - side) / 2),
-    side,
-  };
+  const card = findIndicatorCard(image);
 
   const referenceRGB = sampleRegion(image, card, INDICATOR_ZONES.reference);
   const expiryRGB = sampleRegion(image, card, INDICATOR_ZONES.expiry);
   const sensingRGB = sampleRegion(image, card, INDICATOR_ZONES.sensing);
 
-  const referenceBrightness = (referenceRGB.r + referenceRGB.g + referenceRGB.b) / 3;
-  if (referenceBrightness < 110 || referenceBrightness > 252) {
+  const referenceBrightness = rgbBrightness(referenceRGB);
+  if (referenceBrightness < 110 || referenceBrightness > 252 || rgbChroma(referenceRGB) > 70) {
     throw new CaptureError('poor_lighting', 'Use even light and keep the white part of the card visible.');
   }
   if (channelDistance(expiryRGB, referenceRGB) < 14 || channelDistance(sensingRGB, referenceRGB) < 14) {
@@ -250,7 +255,68 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
   };
 }
 
-function sampleRegion(image: DecodedImage, card: { left: number; top: number; side: number }, region: RelativeRegion): RGB {
+/**
+ * Finds the card at slightly different positions and sizes inside the guide.
+ * This is intentionally bounded: it is fast enough for an on-device preview
+ * and avoids accidentally sampling the worker's hand or the surrounding work
+ * surface. Rotation/perspective correction is the next physical-card upgrade:
+ * print non-reactive corner markers, then rectify their quadrilateral.
+ */
+function findIndicatorCard(image: DecodedImage): CardBounds {
+  const centreSide = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
+  const centreLeft = (image.cols - centreSide) / 2;
+  const centreTop = (image.rows - centreSide) / 2;
+  const scales = [0.78, 0.9, 1, 1.12, 1.24];
+  const offsets = [-0.2, -0.1, 0, 0.1, 0.2];
+  let best: CardCandidate | undefined;
+
+  for (const scale of scales) {
+    const side = Math.round(centreSide * scale);
+    for (const horizontalOffset of offsets) {
+      for (const verticalOffset of offsets) {
+        const bounds = {
+          left: Math.round(centreLeft + horizontalOffset * centreSide),
+          top: Math.round(centreTop + verticalOffset * centreSide),
+          side,
+        };
+        if (!isInsideImage(bounds, image)) continue;
+
+        const reference = sampleRegion(image, bounds, INDICATOR_ZONES.reference, 8);
+        const expiry = sampleRegion(image, bounds, INDICATOR_ZONES.expiry, 8);
+        const sensing = sampleRegion(image, bounds, INDICATOR_ZONES.sensing, 8);
+        const score = scoreCardCandidate(reference, expiry, sensing);
+        if (!best || score > best.score) best = { bounds, score };
+      }
+    }
+  }
+
+  if (!best || best.score < 2.25) {
+    throw new CaptureError(
+      'card_not_in_frame',
+      'Place the small card inside the guides with the blue square and yellow dot visible.'
+    );
+  }
+
+  return best.bounds;
+}
+
+function isInsideImage(card: CardBounds, image: DecodedImage): boolean {
+  return card.left >= 0 && card.top >= 0 && card.left + card.side <= image.cols && card.top + card.side <= image.rows;
+}
+
+function scoreCardCandidate(reference: RGB, expiry: RGB, sensing: RGB): number {
+  const referenceBrightness = rgbBrightness(reference);
+  const brightnessScore = Math.max(0, 1 - Math.abs(referenceBrightness - 210) / 120);
+  const neutralReferenceScore = Math.max(0, 1 - rgbChroma(reference) / 80);
+  const expiryDifference = Math.min(1, channelDistance(expiry, reference) / 70);
+  const sensingDifference = Math.min(1, channelDistance(sensing, reference) / 70);
+
+  // The white reference is the strongest geometry signal. Both chemical pads
+  // must differ from it; they may be blue, brown, yellow, or black as they age.
+  return brightnessScore * 0.8 + neutralReferenceScore * 1.2 + expiryDifference + sensingDifference;
+}
+
+function sampleRegion(image: DecodedImage, card: CardBounds, region: RelativeRegion, gridSize = 24): RGB {
   const left = card.left + Math.round(region.x * card.side);
   const top = card.top + Math.round(region.y * card.side);
   const width = Math.max(8, Math.round(region.width * card.side));
@@ -260,10 +326,10 @@ function sampleRegion(image: DecodedImage, card: { left: number; top: number; si
   const blue: number[] = [];
 
   // A small grid gives a robust value without processing every photo pixel.
-  for (let row = 1; row < 24; row += 1) {
-    for (let column = 1; column < 24; column += 1) {
-      const nx = column / 24;
-      const ny = row / 24;
+  for (let row = 1; row < gridSize; row += 1) {
+    for (let column = 1; column < gridSize; column += 1) {
+      const nx = column / gridSize;
+      const ny = row / gridSize;
       if (region.circle && Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.5, 2) > 0.18) continue;
       const x = clamp(Math.round(left + nx * width), 0, image.cols - 1);
       const y = clamp(Math.round(top + ny * height), 0, image.rows - 1);
@@ -287,6 +353,14 @@ function trimmedMean(values: number[]): number {
 
 function channelDistance(a: RGB, b: RGB): number {
   return Math.sqrt(Math.pow(a.r - b.r, 2) + Math.pow(a.g - b.g, 2) + Math.pow(a.b - b.b, 2));
+}
+
+function rgbBrightness(rgb: RGB): number {
+  return (rgb.r + rgb.g + rgb.b) / 3;
+}
+
+function rgbChroma(rgb: RGB): number {
+  return Math.max(rgb.r, rgb.g, rgb.b) - Math.min(rgb.r, rgb.g, rgb.b);
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -85,6 +85,14 @@ The physical dosimeter utilizes a multi-zone passive test strip mounted on a wea
 
 The colorimetry pipeline executes entirely on-device without cloud dependencies. While an OpenCV bridge is available for perspective correction, the primary color transformations and distance metrics are implemented in pure TypeScript for determinism across platforms.
 
+### Data-free wristband detection
+
+The scanner does **not** require a machine-learning training set. Each band uses a fixed physical layout: a neutral white reference area, a CuSO4 sensing pad, and a FeSO4 expiry dot. With the card inside the camera guide, the app searches a small range of positions and sizes for that known layout, checks that the reference is neutral and evenly lit, then samples the two pads. It can therefore classify the observed sensing-pad state offline as low (blue/green), elevated (brown), or high (very dark/black).
+
+For production reliability, add four small **non-reactive** black registration marks or a printed code around the indicator card. The app can then detect those fixed marks, correct perspective, and sample the same physical locations even when the card is tilted. Do not use either chemical pad as a registration mark because their colours are expected to change.
+
+This solves image recognition, not chemical calibration. `calibration/h2s_curve_v1.json` is provisional: no scanner should present its ppm·hr estimate as validated until controlled exposure testing has established a curve for the exact band formulation, print batch, and use conditions. Use certified calibration gas or an approved laboratory/EHS facility; do not generate H2S for testing.
+
 ### sRGB to CIELAB Transformation
 
 Digital cameras capture color in non-linear device-dependent sRGB. To achieve perceptual uniformity, values are linearized, transformed to CIE 1931 XYZ space under the D65 standard illuminant (neutral daylight, 6504 K), and subsequently mapped into CIELAB coordinates:

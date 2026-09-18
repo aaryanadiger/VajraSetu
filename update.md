@@ -65,7 +65,7 @@ The physical dosimeter strip worn on the worker's wrist comprises three distinct
 
 ## 4. Computer Vision & Colorimetric Engine
 
-The colorimetry pipeline (`src/services/imageProcessing.ts`) runs on-device in pure TypeScript for deterministic numerical precision across devices, backed by an OpenCV bridge (`react-native-fast-opencv`) for perspective correction.
+The colorimetry pipeline (`src/services/imageProcessing.ts`) runs on-device in pure TypeScript for deterministic numerical precision across devices. It uses the indicator card's fixed layout rather than a trained ML model: a bounded in-guide search identifies the neutral reference and the two colour pads, then the pads are sampled deterministically. An OpenCV bridge decodes the capture; printed non-reactive registration marks are the planned production upgrade for automatic perspective correction.
 
 ### 4.1 sRGB to CIE $L^*a^*b^*$ Pipeline
 Digital camera sensors produce non-linear, device-dependent sRGB values ($0 - 255$). The engine transforms these into the perceptually uniform CIELAB color space under standard illuminant D65 ($X_n = 0.95047, Y_n = 1.00000, Z_n = 1.08883$):
@@ -331,4 +331,4 @@ VajraSetu demonstrates an end-to-end, scientifically grounded architecture combi
 ### Recommended Next Steps
 * **Consolidate `f8e747a` Work:** Either finalize the localization/reanimated feature set (by installing `react-i18next`, `i18next`, `react-native-reanimated`, `expo-haptics`, and creating `ExposureLineChart.tsx`), or revert `HomeScreen.tsx` and `CaptureFlowScreen.tsx` to the stable `5ccfd62` baseline.
 * **Empirical Calibration Data:** Replace placeholder values in `calibration/h2s_curve_v1.json` with actual laboratory spectrometry curves obtained from physical $CuSO_4$ test strips exposed in controlled $H_2S$ environmental test chambers.
-* **OpenCV Warp Calibration:** Complete the native OpenCV corner-detection pipeline in `src/services/imageProcessing.ts` (`_realExtractRegions`) to automate quadrilateral perspective warping from printed fiducial markers.
+* **Printed registration marks:** Add four non-reactive corner marks to the physical indicator card, then use the native OpenCV bridge to detect their quadrilateral and rectify perspective before sampling. The reactive CuSO4 and FeSO4 pads must not be used as geometry markers.
