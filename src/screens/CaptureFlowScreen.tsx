@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import { useLanguage } from '../navigation/RootNavigator';
 import { useSarvamText } from '../hooks/useSarvamText';
 import { theme } from '../theme';
@@ -48,6 +48,7 @@ const PIPELINE_STAGES = [
 // A shift duration is not chosen at the camera. The current prototype uses
 // the standard 8-hour reference consistently for every cumulative reading.
 const REFERENCE_SHIFT_HOURS = 8;
+const ALIGNMENT_CHECK_INTERVAL_MS = 1250;
 
 function riskCopy(band: RiskBand, language: AppLanguage) {
   switch (band) {
@@ -63,6 +64,7 @@ function riskCopy(band: RiskBand, language: AppLanguage) {
 export const CaptureFlowScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const isFocused = useIsFocused();
   const { language } = useLanguage();
   const sarvamText = useSarvamText();
   const [step, setStep] = useState<Step>('camera');
@@ -94,7 +96,7 @@ export const CaptureFlowScreen: React.FC = () => {
   }, [route.params?.initialTorch]);
 
   useEffect(() => {
-    if (step !== 'camera' || !cameraReady || !permission?.granted) return;
+    if (step !== 'camera' || !isFocused || !cameraReady || !permission?.granted) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -112,13 +114,16 @@ export const CaptureFlowScreen: React.FC = () => {
 
       try {
         // expo-camera does not expose raw preview frames, so sample a small
-        // still every second. Two readable samples are required before the
-        // UI declares the card aligned, which keeps the status from flickering.
+        // compressed still periodically. Do not use skipProcessing here: it
+        // bypasses JPEG quality and orientation correction, creating full-size
+        // frames that make iOS stutter during the live alignment check.
+        // Two readable samples are required before the UI declares the card
+        // aligned, which keeps the status from flickering.
         const preview = await cameraRef.current?.takePictureAsync({
-          quality: 0.15,
+          quality: 0.1,
           base64: true,
           exif: false,
-          skipProcessing: true,
+          shutterSound: false,
         });
         previewUri = preview?.uri;
         await extractRegionsFromImage(preview?.base64 ?? '');
@@ -145,7 +150,7 @@ export const CaptureFlowScreen: React.FC = () => {
         alignmentCheckInFlight.current = false;
         if (previewUri) void FileSystem.deleteAsync(previewUri, { idempotent: true }).catch(() => undefined);
         if (!cancelled && !scannerUnavailable) {
-          timer = setTimeout(() => void checkAlignment(), 900);
+          timer = setTimeout(() => void checkAlignment(), ALIGNMENT_CHECK_INTERVAL_MS);
         }
       }
     };
@@ -155,7 +160,7 @@ export const CaptureFlowScreen: React.FC = () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [cameraReady, permission?.granted, step]);
+  }, [cameraReady, isFocused, permission?.granted, step]);
 
   async function handleCapture() {
     if (!settings || capturing || alignmentStatus !== 'aligned') return;
@@ -166,7 +171,12 @@ export const CaptureFlowScreen: React.FC = () => {
     let imageUri = '';
     let processed: ProcessingResult;
     try {
-      const photo = await cameraRef.current?.takePictureAsync({ quality: 0.85, base64: true, exif: false });
+      const photo = await cameraRef.current?.takePictureAsync({
+        quality: 0.85,
+        base64: true,
+        exif: false,
+        shutterSound: false,
+      });
       imageUri = photo?.uri ?? '';
 
       let progressIndex = 0;
@@ -251,7 +261,10 @@ export const CaptureFlowScreen: React.FC = () => {
         <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
+          active={isFocused}
           facing="back"
+          autofocus="on"
+          animateShutter={false}
           enableTorch={torchOn}
           onCameraReady={() => setCameraReady(true)}
           onMountError={() => setCameraReady(false)}
