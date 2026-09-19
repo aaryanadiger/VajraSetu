@@ -29,7 +29,7 @@ import {
   getSettings,
   saveReading,
 } from '../services/db';
-import { CaptureError, extractRegionsFromImage } from '../services/imageProcessing';
+import { CaptureError, extractRegionsFromImage, mergeCaptureRegions } from '../services/imageProcessing';
 import { runExposurePipeline } from '../services/exposure';
 import { AppSettings, ProcessingResult, RiskBand } from '../types';
 import { AppLanguage, translateUi } from '../services/translation';
@@ -49,6 +49,7 @@ const PIPELINE_STAGES = [
 // the standard 8-hour reference consistently for every cumulative reading.
 const REFERENCE_SHIFT_HOURS = 8;
 const ALIGNMENT_CHECK_INTERVAL_MS = 1250;
+const FINAL_CAPTURE_COUNT = 3;
 
 function riskCopy(band: RiskBand, language: AppLanguage) {
   switch (band) {
@@ -96,7 +97,7 @@ export const CaptureFlowScreen: React.FC = () => {
   }, [route.params?.initialTorch]);
 
   useEffect(() => {
-    if (step !== 'camera' || !isFocused || !cameraReady || !permission?.granted) return;
+    if (step !== 'camera' || !isFocused || !cameraReady || !permission?.granted || capturing) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -160,24 +161,45 @@ export const CaptureFlowScreen: React.FC = () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [cameraReady, isFocused, permission?.granted, step]);
+  }, [cameraReady, capturing, isFocused, permission?.granted, step]);
 
   async function handleCapture() {
     if (!settings || capturing || alignmentStatus !== 'aligned') return;
     setCapturing(true);
-    setStep('processing');
     setStageIndex(0);
 
     let imageUri = '';
     let processed: ProcessingResult;
+    const capturedImageUris: string[] = [];
+    let keepPrimaryImage = false;
     try {
-      const photo = await cameraRef.current?.takePictureAsync({
-        quality: 0.85,
-        base64: true,
-        exif: false,
-        shutterSound: false,
-      });
-      imageUri = photo?.uri ?? '';
+      // Let any low-quality alignment preview finish before the final burst;
+      // CameraView should not receive overlapping takePictureAsync calls.
+      for (let attempt = 0; attempt < 24 && alignmentCheckInFlight.current; attempt += 1) {
+        await pause(50);
+      }
+      if (alignmentCheckInFlight.current) {
+        throw new CaptureError('unstable_capture', 'The camera is still checking the card. Hold steady and try again.');
+      }
+
+      const frameRegions = [];
+      for (let index = 0; index < FINAL_CAPTURE_COUNT; index += 1) {
+        const photo = await cameraRef.current?.takePictureAsync({
+          quality: 0.78,
+          base64: true,
+          exif: false,
+          shutterSound: false,
+        });
+        if (!photo?.base64) {
+          throw new CaptureError('missing_image', 'No image was captured. Try again.');
+        }
+        if (photo.uri) capturedImageUris.push(photo.uri);
+        frameRegions.push(await extractRegionsFromImage(photo.base64));
+        if (index < FINAL_CAPTURE_COUNT - 1) await pause(90);
+      }
+
+      imageUri = capturedImageUris[0] ?? '';
+      setStep('processing');
 
       let progressIndex = 0;
       for (const _stage of PIPELINE_STAGES) {
@@ -186,8 +208,9 @@ export const CaptureFlowScreen: React.FC = () => {
         progressIndex += 1;
       }
 
-      const regions = await extractRegionsFromImage(photo?.base64 ?? '');
+      const regions = mergeCaptureRegions(frameRegions);
       processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS);
+      keepPrimaryImage = true;
       setResult(processed);
     } catch (error) {
       const message = error instanceof CaptureError
@@ -197,6 +220,11 @@ export const CaptureFlowScreen: React.FC = () => {
       setStep('unreadable');
       setCapturing(false);
       return;
+    } finally {
+      const disposableUris = keepPrimaryImage ? capturedImageUris.slice(1) : capturedImageUris;
+      await Promise.all(disposableUris.map(uri =>
+        FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => undefined)
+      ));
     }
 
     try {
@@ -312,7 +340,7 @@ export const CaptureFlowScreen: React.FC = () => {
           <View style={styles.cameraBottom}>
             <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing || alignmentStatus !== 'aligned') && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing || alignmentStatus !== 'aligned'} accessibilityRole="button" accessibilityLabel="Capture wristband">
               <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
-              <Text style={styles.captureLabel}>{!cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : tx('alignBeforeScan', 'Align card to scan')}</Text>
+              <Text style={styles.captureLabel}>{capturing ? sarvamText('Hold steady…') : !cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : tx('alignBeforeScan', 'Align card to scan')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -394,6 +422,7 @@ const ResultStep: React.FC<{
             <Text style={styles.detailLabel}>{tx('whatToDo', 'What to do')}</Text>
             <Text style={styles.detailText}>{tx('newBand', 'Use a new wristband and scan again.')} {tx('tellSupervisor', 'If this keeps happening, tell your supervisor.')}</Text>
             <Text style={styles.detailSub}>Expiry ΔE: {result.expiry_delta_e.toFixed(2)}</Text>
+            <Text style={styles.detailSub}>Image quality: {Math.round(result.scan_quality * 100)}% · {result.sample_count} frames</Text>
           </Card>
           <Button label={tx('rescan', 'Scan another wristband')} onPress={onRescan} style={styles.fullButton} />
           <Button label={tx('done', 'Done')} variant="outline" onPress={onDone} style={styles.fullButton} />
@@ -421,15 +450,17 @@ const ResultStep: React.FC<{
 
         <View style={styles.prototypeNote}>
           <Ionicons name="information-circle-outline" size={18} color={theme.colors.text.secondary} />
-          <Text style={styles.prototypeNoteText}>Colour category: {result.colour_category.toUpperCase()}. ppm values are estimates until the band is calibrated with controlled H₂S samples.</Text>
+          <Text style={styles.prototypeNoteText}>Estimated from calibration {result.calibration_curve_version} using {result.sample_count} consistent frames. It is not a live gas reading and remains provisional until controlled H₂S calibration.</Text>
         </View>
 
         <Card style={styles.resultCard}>
-          <Text style={styles.detailLabel}>{tx('latestExposure', 'Your latest reading')}</Text>
-          <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.twa_ppm.toFixed(2)}</Text><Text style={styles.bigUnit}>ppm TWA</Text></View>
+          <Text style={styles.detailLabel}>{sarvamText('Estimated cumulative exposure')}</Text>
+          <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.is_saturated ? '≥' : ''}{result.cumulative_ppm_hr.toFixed(1)}</Text><Text style={styles.bigUnit}>ppm·hr</Text></View>
           <View style={styles.resultRule} />
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('8-hour equivalent')}</Text><Text style={styles.detailValue}>{result.twa_ppm.toFixed(2)} ppm TWA</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'India TWA limit')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
-          <View style={styles.detailRow}><Text style={styles.detailLabel}>Cumulative exposure</Text><Text style={styles.detailValue}>{result.cumulative_ppm_hr.toFixed(1)} ppm·hr</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('Image quality')}</Text><Text style={styles.detailValue}>{Math.round(result.scan_quality * 100)}%</Text></View>
+          {result.is_saturated && <Text style={styles.detailSub}>The sensing patch is at or beyond the calibrated colour range; the actual cumulative exposure may be higher.</Text>}
         </Card>
 
         <Button label={tx('done', 'Done')} onPress={onDone} style={styles.fullButton} />

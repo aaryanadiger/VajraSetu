@@ -29,11 +29,12 @@ Print four small, non-reactive, high-contrast registration marks or a code aroun
 1. The user grants camera access and aligns the physical card to the blue-square and yellow-circle guides.
 2. The app samples small preview JPEGs roughly every 1.25 seconds.
 3. A candidate card must show a plausible neutral reference plus distinct sensing and expiry areas. Two consecutive successful samples show **Aligned — ready to scan**.
-4. On tap, a full-quality JPEG is captured.
-5. `react-native-fast-opencv` decodes the JPEG. The app uses deterministic TypeScript to search/sample regions and calculate colour differences.
-6. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from provisional fresh baselines.
-7. The FeSO₄ patch gates the result as valid/invalid. The CuSO₄ patch produces a colour category and the provisional exposure calculation.
-8. The result, linked wristband record, and an 8-hour reference shift are saved to local SQLite.
+4. On tap, three higher-quality JPEGs are captured while the user holds steady.
+5. `react-native-fast-opencv` decodes each JPEG. Deterministic TypeScript searches and samples each frame independently.
+6. The app rejects the scan if cross-frame CIEDE2000 differences indicate movement or changing light. Otherwise it uses median RGB values to reduce camera noise.
+7. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from provisional fresh baselines.
+8. The versioned FeSO₄ range gates the result as valid/invalid. The CuSO₄ patch produces a colour category and provisional ppm·hr estimate.
+9. The result, image-quality score, sample count, saturation state, linked wristband record, and an 8-hour reference shift are saved to local SQLite.
 
 ## Recognition checks and user feedback
 
@@ -96,14 +97,9 @@ Use a documented controlled study for the exact final formulation, substrate, do
 9. **Run usability testing.** Observe workers performing the scan in normal PPE and work lighting. Measure retry rate, alignment time, comprehension, and unsafe interpretations.
 10. **Obtain professional review.** An industrial hygienist/EHS lead and relevant legal/regulatory reviewer must approve the intended operational use.
 
-## Known calibration discrepancy to resolve
+## Versioned validity threshold
 
-There are two different expiry limits in the repository:
-
-- `calibration/h2s_curve_v1.json` says the valid maximum ΔE is **8**.
-- `validateBand()` in `src/services/exposure.ts` currently uses a hard-coded maximum ΔE of **18**.
-
-The runtime uses **18**, not the JSON value. This is an intentional documentation callout because a production calibration must make the validity source single, versioned, and test-covered before any safety claim is made.
+The runtime now reads the FeSO₄ validity range only from the active calibration JSON. In provisional `v1`, the accepted expiry ΔE range is 0–8. This removes the previous duplicate hard-coded threshold, but the value itself still requires controlled fresh/expired sample validation.
 
 ## Practical scanner test matrix
 
@@ -112,7 +108,8 @@ Run the following on each intended device. Record the result, image, card batch,
 | Scenario | Expected behaviour |
 | --- | --- |
 | Empty frame | Never reports aligned; asks user to move card. |
-| Correct fresh card, diffuse indoor light | Aligns after two previews and captures. |
+| Correct fresh card, diffuse indoor light | Aligns after two previews, captures three consistent frames, and displays estimated ppm·hr. |
+| Card or phone moves during final capture | Rejects the scan instead of averaging inconsistent colours. |
 | Correct card, moderate tilt | Current prototype may reject it; document the angle where it becomes unreliable. |
 | Correct card, direct glare | Requests even light or remains unaligned. |
 | Card cropped or one patch hidden | Never reports aligned. |

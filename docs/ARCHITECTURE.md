@@ -47,7 +47,8 @@ React Native UI
 ```text
 Camera JPEG
   → bounded indicator-card search
-  → sample reference, FeSO₄, CuSO₄ regions
+  → capture three frames and sample reference, FeSO₄, CuSO₄ regions
+  → reject cross-frame movement or lighting inconsistency
   → reject unreadable card / poor light
   → white-balance both pads against captured reference
   → CIEDE2000 difference from provisional fresh baselines
@@ -58,7 +59,7 @@ Camera JPEG
 
 The alignment UI calls `takePictureAsync` at low quality approximately every 1.25 seconds. It requires two readable samples before changing to **Aligned — ready to scan**; this avoids a flashing ready state when a hand moves slightly. The capture button remains disabled until this state is reached.
 
-The final capture uses a higher-quality JPEG. Preview images are deleted after each check; the final capture URI is stored with the reading where the platform makes it available.
+The final scan captures three higher-quality JPEGs, extracts each independently, and merges median RGB values only when their colours remain consistent. Extra captures are deleted; the first capture URI is stored with the reading where the platform makes it available. `scan_quality` describes image/card consistency only—it is not confidence in the chemical calibration.
 
 ## Deterministic scanner, not ML
 
@@ -81,7 +82,7 @@ SQLite is opened as `vajra_setu.db` and uses WAL mode. The main tables are:
 | `workers` | Worker records, including the local account's worker record. |
 | `wristbands` | Per-capture wristband metadata. |
 | `shifts` | Linked work period; scan flow currently creates an 8-hour reference shift. |
-| `readings` | Validity, ΔE values, colour category, provisional estimate, risk band, and capture URI. |
+| `readings` | Validity, ΔE values, provisional exposure estimate, risk band, image quality, sample count, saturation state, and capture URI. |
 | `settings` | Calibration version and non-safety display settings. |
 | `translation_cache` | Persisted Sarvam text by source phrase and language. |
 | `app_preferences` | Selected language and future device preferences. |

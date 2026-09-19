@@ -27,6 +27,9 @@ const HEADERS = [
   'Index Mode',
   'Risk Band',
   'Calibration Version',
+  'Scan Quality',
+  'Sample Count',
+  'Saturated',
   'Image Path',
 ];
 
@@ -59,6 +62,9 @@ export function generateCSV(rows: CSVRow[]): string {
       reading.index_mode,
       reading.risk_band.toUpperCase(),
       reading.calibration_curve_version,
+      reading.scan_quality.toFixed(3),
+      reading.sample_count,
+      reading.is_saturated ? 'YES' : 'NO',
       reading.raw_image_path ?? '',
     ];
     lines.push(cells.map(escape).join(','));

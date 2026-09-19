@@ -57,6 +57,9 @@ export async function initDB(): Promise<void> {
       index_mode                  TEXT NOT NULL DEFAULT 'estimated_single_sample',
       risk_band                   TEXT NOT NULL DEFAULT 'invalid',
       calibration_curve_version   TEXT NOT NULL DEFAULT 'v1',
+      scan_quality                REAL NOT NULL DEFAULT 0,
+      sample_count                INTEGER NOT NULL DEFAULT 1,
+      is_saturated                INTEGER NOT NULL DEFAULT 0,
       raw_image_path              TEXT,
       FOREIGN KEY (shift_id) REFERENCES shifts(id),
       FOREIGN KEY (wristband_id) REFERENCES wristbands(id)
@@ -89,7 +92,25 @@ export async function initDB(): Promise<void> {
     );
   `);
 
+  await ensureReadingColumns(db);
   await _ensureDefaultSettings(db);
+}
+
+/** Add scanner metadata without deleting readings created by older builds. */
+async function ensureReadingColumns(db: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(readings)`);
+  const names = new Set(columns.map(column => column.name));
+  const additions = [
+    ['scan_quality', 'REAL NOT NULL DEFAULT 0'],
+    ['sample_count', 'INTEGER NOT NULL DEFAULT 1'],
+    ['is_saturated', 'INTEGER NOT NULL DEFAULT 0'],
+  ] as const;
+
+  for (const [name, definition] of additions) {
+    if (!names.has(name)) {
+      await db.execAsync(`ALTER TABLE readings ADD COLUMN ${name} ${definition}`);
+    }
+  }
 }
 
 async function _ensureDefaultSettings(db: SQLite.SQLiteDatabase): Promise<void> {
@@ -198,13 +219,15 @@ export async function saveReading(reading: Omit<Reading, 'id'>): Promise<Reading
     `INSERT INTO readings (
       id, shift_id, wristband_id, captured_at, band_valid, expiry_delta_e,
       sensing_delta_e, cumulative_ppm_hr, twa_ppm, h2s_index, index_mode,
-      risk_band, calibration_curve_version, raw_image_path
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      risk_band, calibration_curve_version, scan_quality, sample_count,
+      is_saturated, raw_image_path
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, reading.shift_id, reading.wristband_id, reading.captured_at,
       reading.band_valid ? 1 : 0, reading.expiry_delta_e, reading.sensing_delta_e,
       reading.cumulative_ppm_hr, reading.twa_ppm, reading.h2s_index,
       reading.index_mode, reading.risk_band, reading.calibration_curve_version,
+      reading.scan_quality, reading.sample_count, reading.is_saturated ? 1 : 0,
       reading.raw_image_path ?? null,
     ]
   );
@@ -240,7 +263,13 @@ export async function getAllReadings(): Promise<Reading[]> {
 }
 
 function deserializeReading(row: any): Reading {
-  return { ...row, band_valid: row.band_valid === 1 };
+  return {
+    ...row,
+    band_valid: row.band_valid === 1,
+    is_saturated: row.is_saturated === 1,
+    scan_quality: Number(row.scan_quality ?? 0),
+    sample_count: Number(row.sample_count ?? 1),
+  };
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

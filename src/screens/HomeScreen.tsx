@@ -120,20 +120,20 @@ export const HomeScreen: React.FC = () => {
 
         <View style={styles.exposureSurface}>
           <View style={styles.surfaceHeader}>
-            <Text style={styles.surfaceLabel}>{tx('latestExposure', 'Latest recorded exposure')}</Text>
+            <Text style={styles.surfaceLabel}>{sarvamText('Estimated cumulative exposure')}</Text>
             {latest && <View style={[styles.statusPill, { backgroundColor: `${status.color}14` }]}><Ionicons name={status.icon} size={14} color={status.color} /><Text style={[styles.statusPillText, { color: status.color }]}>{statusLabel}</Text></View>}
           </View>
 
           {loading ? <ActivityIndicator color="#1677FF" style={styles.loader} /> : (
             <>
               <View style={styles.valueLine}>
-                <Text style={styles.exposureValue}>{exposure.toFixed(1)}</Text>
+                <Text style={styles.exposureValue}>{latest?.is_saturated ? '≥' : ''}{exposure.toFixed(1)}</Text>
                 <Text style={styles.exposureUnit}>ppm·hr</Text>
               </View>
               <SegmentedMeter fraction={progress} color={status.color} />
               <View style={styles.meterLabels}>
                 <Text style={styles.meterLabel}>0</Text>
-              <Text style={styles.meterLimit}>{tx('referenceLimit', 'India TWA limit')}: {oel} ppm</Text>
+              <Text style={styles.meterLimit}>{sarvamText('8-hour equivalent')}: {latest?.band_valid ? latest.twa_ppm.toFixed(2) : '0.00'} / {oel} ppm</Text>
                 <Text style={styles.meterLabel}>{oel}</Text>
               </View>
             </>

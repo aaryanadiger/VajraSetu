@@ -18,13 +18,18 @@ export interface CaptureRegions {
   expiryRGB: RGB;
   /** Average RGB of the unexposed reference patch on the printed scale */
   referenceRGB: RGB;
+  /** Image/card quality only. This is not confidence in the chemical calibration. */
+  scanQuality: number;
+  /** Number of camera frames consolidated into this sample. */
+  sampleCount: number;
 }
 
 export type CaptureProblem =
   | 'native_scanner_unavailable'
   | 'missing_image'
   | 'card_not_in_frame'
-  | 'poor_lighting';
+  | 'poor_lighting'
+  | 'unstable_capture';
 
 /** A recoverable scan problem that the UI can turn into a simple retry tip. */
 export class CaptureError extends Error {
@@ -234,7 +239,8 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
     throw new CaptureError('card_not_in_frame', 'Move the indicator card closer and keep it inside the frame.');
   }
 
-  const card = findIndicatorCard(image);
+  const candidate = findIndicatorCard(image);
+  const card = candidate.bounds;
 
   const referenceRGB = sampleRegion(image, card, INDICATOR_ZONES.reference);
   const expiryRGB = sampleRegion(image, card, INDICATOR_ZONES.expiry);
@@ -252,7 +258,49 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
     referenceRGB,
     expiryRGB,
     sensingRGB,
+    scanQuality: captureQuality(candidate.score, referenceRGB),
+    sampleCount: 1,
   };
+}
+
+/**
+ * Consolidate several final captures. Median RGB values reduce camera noise,
+ * while a cross-frame ΔE gate prevents a moving/glared card from producing a
+ * precise-looking exposure estimate.
+ */
+export function mergeCaptureRegions(frames: CaptureRegions[]): CaptureRegions {
+  if (frames.length < 2) {
+    throw new CaptureError('unstable_capture', 'Keep the phone steady while the app checks the card.');
+  }
+
+  const merged = {
+    referenceRGB: medianRGB(frames.map(frame => frame.referenceRGB)),
+    expiryRGB: medianRGB(frames.map(frame => frame.expiryRGB)),
+    sensingRGB: medianRGB(frames.map(frame => frame.sensingRGB)),
+  };
+  const frameDifferences = frames.flatMap(frame => [
+    computeDeltaE(frame.referenceRGB, merged.referenceRGB),
+    computeDeltaE(frame.expiryRGB, merged.expiryRGB),
+    computeDeltaE(frame.sensingRGB, merged.sensingRGB),
+  ]);
+  const worstFrameDifference = Math.max(...frameDifferences);
+
+  if (!Number.isFinite(worstFrameDifference) || worstFrameDifference > 9) {
+    throw new CaptureError(
+      'unstable_capture',
+      'The card moved or the light changed. Hold steady in even light and scan again.'
+    );
+  }
+
+  const averageFrameQuality = frames.reduce((sum, frame) => sum + frame.scanQuality, 0) / frames.length;
+  const consistencyQuality = clamp(1 - worstFrameDifference / 9, 0, 1);
+  const scanQuality = clamp(averageFrameQuality * 0.6 + consistencyQuality * 0.4, 0, 1);
+
+  if (scanQuality < 0.42) {
+    throw new CaptureError('poor_lighting', 'Use even light and keep the full card clearly visible.');
+  }
+
+  return { ...merged, scanQuality, sampleCount: frames.length };
 }
 
 /**
@@ -262,7 +310,7 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
  * surface. Rotation/perspective correction is the next physical-card upgrade:
  * print non-reactive corner markers, then rectify their quadrilateral.
  */
-function findIndicatorCard(image: DecodedImage): CardBounds {
+function findIndicatorCard(image: DecodedImage): CardCandidate {
   const centreSide = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
   const centreLeft = (image.cols - centreSide) / 2;
   const centreTop = (image.rows - centreSide) / 2;
@@ -297,7 +345,30 @@ function findIndicatorCard(image: DecodedImage): CardBounds {
     );
   }
 
-  return best.bounds;
+  return best;
+}
+
+function captureQuality(cardScore: number, reference: RGB): number {
+  const geometryQuality = clamp((cardScore - 2.25) / 1.5, 0, 1);
+  const brightnessQuality = clamp(1 - Math.abs(rgbBrightness(reference) - 205) / 100, 0, 1);
+  const neutralityQuality = clamp(1 - rgbChroma(reference) / 70, 0, 1);
+  return clamp(geometryQuality * 0.55 + brightnessQuality * 0.2 + neutralityQuality * 0.25, 0, 1);
+}
+
+function medianRGB(values: RGB[]): RGB {
+  return {
+    r: median(values.map(value => value.r)),
+    g: median(values.map(value => value.g)),
+    b: median(values.map(value => value.b)),
+  };
+}
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
 }
 
 function isInsideImage(card: CardBounds, image: DecodedImage): boolean {

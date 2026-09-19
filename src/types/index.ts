@@ -72,6 +72,10 @@ export interface Reading {
   index_mode: IndexMode;
   risk_band: RiskBand;
   calibration_curve_version: string;
+  /** Camera/card quality from 0 to 1; not calibration confidence. */
+  scan_quality: number;
+  sample_count: number;
+  is_saturated: boolean;
   raw_image_path: string | null;
 }
 
@@ -137,4 +141,8 @@ export interface ProcessingResult {
   index_mode: IndexMode;
   risk_band: RiskBand;
   calibration_curve_version: string;
+  /** Camera/card quality from 0 to 1; not calibration confidence. */
+  scan_quality: number;
+  sample_count: number;
+  is_saturated: boolean;
 }

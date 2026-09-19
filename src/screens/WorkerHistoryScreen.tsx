@@ -46,11 +46,11 @@ export const WorkerHistoryScreen: React.FC = () => {
   }, []);
 
   const validReadings = readings.filter(r => r.band_valid);
-  const avgTWA = validReadings.length
-    ? validReadings.reduce((s, r) => s + r.twa_ppm, 0) / validReadings.length
+  const averageDose = validReadings.length
+    ? validReadings.reduce((sum, reading) => sum + reading.cumulative_ppm_hr, 0) / validReadings.length
     : 0;
-  const maxTWA = validReadings.length
-    ? Math.max(...validReadings.map(r => r.twa_ppm))
+  const highestDose = validReadings.length
+    ? Math.max(...validReadings.map(reading => reading.cumulative_ppm_hr))
     : 0;
   const highRiskCount = readings.filter(r => r.risk_band === 'high').length;
 
@@ -83,8 +83,8 @@ export const WorkerHistoryScreen: React.FC = () => {
               <Card style={styles.summaryCard}>
                 <Text style={styles.summaryTitle}>{t('Summary')} ({readings.length} {t('readings')})</Text>
                 <View style={styles.statsRow}>
-                  <StatBox label={t('Average TWA')} value={`${avgTWA.toFixed(3)} ppm`} />
-                  <StatBox label={t('Peak TWA')} value={`${maxTWA.toFixed(3)} ppm`} alert={maxTWA >= 5} />
+                  <StatBox label={t('Average dose')} value={`${averageDose.toFixed(1)} ppm·hr`} />
+                  <StatBox label={t('Highest dose')} value={`${highestDose.toFixed(1)} ppm·hr`} />
                   <StatBox label={t('High-risk days')} value={String(highRiskCount)} alert={highRiskCount > 0} />
                 </View>
               </Card>
@@ -92,7 +92,7 @@ export const WorkerHistoryScreen: React.FC = () => {
               {/* Mini trend chart (last 7 valid readings) */}
               {validReadings.length >= 2 && (
                 <Card style={styles.chartCard}>
-                  <Text style={styles.chartTitle}>{t('TWA trend')} ({t('last')} {Math.min(7, validReadings.length)} {t('readings')})</Text>
+                  <Text style={styles.chartTitle}>{t('Cumulative exposure trend')} ({t('last')} {Math.min(7, validReadings.length)} {t('readings')})</Text>
                   <MiniBarChart readings={validReadings.slice(0, 7).reverse()} />
                 </Card>
               )}
@@ -121,12 +121,12 @@ export const WorkerHistoryScreen: React.FC = () => {
 // ─── Mini Bar Chart ───────────────────────────────────────────────────────────
 
 const MiniBarChart: React.FC<{ readings: Reading[] }> = ({ readings }) => {
-  const maxVal = Math.max(...readings.map(r => r.twa_ppm), 1);
+  const maxVal = Math.max(...readings.map(reading => reading.cumulative_ppm_hr), 1);
 
   return (
     <View style={styles.miniChart}>
       {readings.map((r, i) => {
-        const heightPct = r.twa_ppm / maxVal;
+        const heightPct = r.cumulative_ppm_hr / maxVal;
         const band = r.risk_band;
         const color = band === 'high'
           ? theme.colors.semantic.danger
@@ -162,10 +162,10 @@ const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => {
       {reading.band_valid ? (
         <>
           <View style={styles.readingMetrics}>
-            <Text style={styles.readingMetricVal}>{reading.twa_ppm.toFixed(3)}</Text>
-            <Text style={styles.readingMetricUnit}> {t('ppm TWA')}</Text>
+            <Text style={styles.readingMetricVal}>{reading.is_saturated ? '≥' : ''}{reading.cumulative_ppm_hr.toFixed(1)}</Text>
+            <Text style={styles.readingMetricUnit}> ppm·hr</Text>
           </View>
-          <Text style={styles.readingIndexText}>{t('Index')}: {reading.h2s_index.toFixed(1)}</Text>
+          <Text style={styles.readingIndexText}>{t('8-hour equivalent')}: {reading.twa_ppm.toFixed(2)} ppm{reading.scan_quality > 0 ? ` · ${t('Image quality')}: ${Math.round(reading.scan_quality * 100)}%` : ''}</Text>
         </>
       ) : (
         <Text style={styles.invalidText}>{t('Band invalid — no reading')}</Text>

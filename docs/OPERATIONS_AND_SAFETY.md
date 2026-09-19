@@ -92,7 +92,7 @@ Before asking workers to use a pilot build:
 Do not describe the current build as a compliance monitor or deploy it as a sole safety control until these are complete:
 
 1. Controlled calibration and independent validation of sensing and expiry rules.
-2. One authoritative, versioned validity threshold; the code currently has conflicting provisional values.
+2. Controlled validation of the authoritative, versioned expiry threshold and its false-valid rate.
 3. Production-grade identity/access control and encrypted data/export handling.
 4. A secure translation backend—no secret API key embedded in the mobile bundle.
 5. Actual-shift capture instead of the fixed eight-hour scan assumption.

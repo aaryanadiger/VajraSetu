@@ -10,10 +10,10 @@ It is designed to be simple in a factory setting: one device belongs to one work
 
 - Device-local profile onboarding: name, worker ID, and site/factory.
 - Home, Scan, History, and Settings flows with an account badge and bottom navigation.
-- Camera permission, live alignment feedback, torch control, full-resolution capture, retry guidance, and result storage.
+- Camera permission, live alignment feedback, torch control, three-frame capture consistency checks, retry guidance, and result storage.
 - Deterministic on-device image processing—no ML training set or cloud image upload is required.
 - FeSO₄ band-validity gate; CuSO₄ rule-based colour category (`low`, `elevated`, or `high`).
-- A provisional ΔE → cumulative ppm·hr → 8-hour TWA pipeline and a clearly labelled single-sample index.
+- A provisional ΔE → cumulative ppm·hr → 8-hour TWA pipeline with image-quality and saturation metadata.
 - English, Bhojpuri, Hindi, Marathi, and Kannada UI support. Common safety copy is packaged offline; supported cache misses can use Sarvam Translate and are persisted locally.
 - Local Expo SQLite storage and CSV generation.
 - iOS 27 scene lifecycle support and a config plugin for workspaces whose path contains spaces.

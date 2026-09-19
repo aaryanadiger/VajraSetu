@@ -11,7 +11,7 @@
  */
 
 import { ProcessingResult, H2SIndex } from '../types';
-import { deltaEToPpmHr, getSaturationDeltaE } from './calibration';
+import { deltaEToPpmHr, getSaturationDeltaE, isBandValid } from './calibration';
 import { computeDeltaE, CaptureRegions, RGB } from './imageProcessing';
 
 // Provisional CuSO4 baseline sampled from the supplied unexposed pad photograph.
@@ -21,7 +21,6 @@ const CUSO4_UNEXPOSED_RGB: RGB = { r: 174, g: 190, b: 181 };
 // Replace this and the threshold with controlled expiry samples before treating
 // this as a safety decision.
 const FESO4_FRESH_RGB: RGB = { r: 201, g: 168, b: 55 };
-const FE_SO4_VALID_MAX_DELTA_E = 18;
 const TARGET_WHITE_RGB: RGB = { r: 245, g: 245, b: 245 };
 
 function clampChannel(value: number): number {
@@ -39,12 +38,10 @@ function whiteBalance(sample: RGB, capturedWhite: RGB): RGB {
 
 // ─── Band validity gate (Step A) ─────────────────────────────────────────────
 
-export function validateBand(expiryDeltaE: number): boolean {
-  // Keep the expiry gate explicit so it cannot be silently bypassed in a
-  // future refactor. FE_SO4_VALID_MAX_DELTA_E is provisional until lab work.
-  return Number.isFinite(expiryDeltaE)
-    && expiryDeltaE >= 0
-    && expiryDeltaE <= FE_SO4_VALID_MAX_DELTA_E;
+export function validateBand(expiryDeltaE: number, curveVersion = 'v1'): boolean {
+  // The versioned calibration asset is the single source of truth. Its limits
+  // remain provisional until controlled fresh/expired samples are validated.
+  return Number.isFinite(expiryDeltaE) && isBandValid(expiryDeltaE, curveVersion);
 }
 
 /**
@@ -157,7 +154,7 @@ export async function runExposurePipeline(
   const correctedSensing = whiteBalance(regions.sensingRGB, regions.referenceRGB);
   const expiryDeltaE = computeDeltaE(correctedExpiry, FESO4_FRESH_RGB);
   const sensingDeltaE = computeDeltaE(correctedSensing, CUSO4_UNEXPOSED_RGB);
-  const bandValid = validateBand(expiryDeltaE);
+  const bandValid = validateBand(expiryDeltaE, curveVersion);
 
   // Step B1: TWA
   const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);
@@ -167,9 +164,11 @@ export async function runExposurePipeline(
 
   // Risk classification
   const colourCategory = classifyCuSO4Colour(correctedSensing, sensingDeltaE);
-  const riskBand = colourCategory === 'high' || twa.isSaturated
-    ? 'high'
-    : colourCategory === 'elevated' ? 'elevated' : 'low';
+  const riskBand = !bandValid
+    ? 'invalid'
+    : colourCategory === 'high' || twa.isSaturated
+      ? 'high'
+      : colourCategory === 'elevated' ? 'elevated' : 'low';
 
   return {
     band_valid: bandValid,
@@ -182,5 +181,8 @@ export async function runExposurePipeline(
     index_mode: 'estimated_single_sample',
     risk_band: riskBand,
     calibration_curve_version: curveVersion,
+    scan_quality: parseFloat(regions.scanQuality.toFixed(3)),
+    sample_count: regions.sampleCount,
+    is_saturated: twa.isSaturated,
   };
 }
