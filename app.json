@@ -7,22 +7,44 @@
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.arnav2007.vajra-setu-app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/logo.png"
     },
     "plugins": [
       "expo-asset",
+      "./plugins/withQuotedExpoConstantsPath",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
       [
         "expo-camera",
         {
           "cameraPermission": "Allow Vajra Setu to use the camera to scan exposure wristbands."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5ef5f53f-6764-46c3-be45-910027b48dc4"
+      }
+    }
   }
 }
