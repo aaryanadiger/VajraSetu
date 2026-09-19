@@ -108,7 +108,7 @@ export const SettingsScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={['#f5f8ff', '#e8f1fb', '#c8daf4']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FAF7F0', '#EEF4EF', '#DCEAE4']} style={StyleSheet.absoluteFill} />
       <ScrollView showsVerticalScrollIndicator={false}>
         <AppHeader />
 
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   limitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border },
   limitLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.primary },
   limitNote: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.secondary, marginTop: 2, maxWidth: 220, lineHeight: 15 },
-  limitValue: { fontFamily: theme.typography.family.bold, fontSize: theme.typography.size.md, color: '#1677FF' },
+  limitValue: { fontFamily: theme.typography.family.bold, fontSize: theme.typography.size.md, color: theme.colors.primary },
   safetyDisclaimer: { fontFamily: theme.typography.family.main, fontSize: 11, lineHeight: 16, color: theme.colors.text.secondary, backgroundColor: '#F8FAFC', borderRadius: 12, padding: theme.spacing.md, marginTop: theme.spacing.sm },
   settingRow: {
     flexDirection: 'row',
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   unitTextActive: { color: theme.colors.text.primary },
   exportBtn: { width: '100%', marginTop: theme.spacing.md },
   profileSummary: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, paddingBottom: theme.spacing.md },
-  profileAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#1677FF', alignItems: 'center', justifyContent: 'center' },
+  profileAvatar: { width: 46, height: 46, borderRadius: 23, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
   profileAvatarText: { fontFamily: theme.typography.family.bold, fontSize: 14, color: '#fff' },
   profileName: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, color: theme.colors.text.primary },
   profileMeta: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary, marginTop: 2 },

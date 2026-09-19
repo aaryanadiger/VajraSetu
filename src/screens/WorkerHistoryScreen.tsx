@@ -56,7 +56,7 @@ export const WorkerHistoryScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={['#f5f8ff', '#e8f1fb', '#c8daf4']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#FAF7F0', '#EEF4EF', '#DCEAE4']} style={StyleSheet.absoluteFill} />
 
       {/* Header */}
       <View style={styles.header}>

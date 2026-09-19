@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
   resultBadge: { marginBottom: theme.spacing.md },
   resultHeading: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xxl, color: theme.colors.text.primary, textAlign: 'center' },
   resultBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, marginBottom: theme.spacing.xl, maxWidth: 340 },
-  prototypeNote: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#EEF5FF', borderRadius: 14, padding: theme.spacing.md, marginBottom: theme.spacing.lg },
+  prototypeNote: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#E8F1EC', borderRadius: 14, padding: theme.spacing.md, marginBottom: theme.spacing.lg },
   prototypeNoteText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, color: theme.colors.text.secondary },
   resultCard: { width: '100%', marginHorizontal: 0, borderRadius: 20, marginBottom: theme.spacing.lg },
   detailLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary },

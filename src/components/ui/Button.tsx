@@ -14,6 +14,7 @@ export const Button: React.FC<ButtonProps> = ({ label, variant = 'primary', icon
 
   if (variant === 'primary') {
     containerStyle.push(styles.primary);
+    labelStyle.push(styles.primaryLabel);
   } else if (variant === 'secondary') {
     containerStyle.push(styles.secondary);
   } else if (variant === 'outline') {
@@ -41,7 +42,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   primary: {
-    backgroundColor: theme.colors.primaryLight,
+    backgroundColor: theme.colors.primary,
     shadowColor: theme.shadows.button.shadowColor,
     shadowOffset: theme.shadows.button.shadowOffset,
     shadowOpacity: theme.shadows.button.shadowOpacity,
@@ -49,7 +50,7 @@ const styles = StyleSheet.create({
     elevation: theme.shadows.button.elevation,
   },
   secondary: {
-    backgroundColor: theme.colors.semantic.neutral,
+    backgroundColor: theme.colors.accentWarmLight,
   },
   outline: {
     backgroundColor: 'transparent',
@@ -65,5 +66,9 @@ const styles = StyleSheet.create({
   },
   outlineLabel: {
     color: theme.colors.primary,
+  },
+  primaryLabel: {
+    color: theme.colors.text.inverse,
+    fontFamily: theme.typography.family.semiBold,
   },
 });

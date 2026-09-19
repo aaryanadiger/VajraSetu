@@ -21,6 +21,8 @@ const styles = StyleSheet.create({
     padding: theme.spacing.xl,
     marginHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(43,111,106,0.08)',
     shadowColor: theme.shadows.card.shadowColor,
     shadowOffset: theme.shadows.card.shadowOffset,
     shadowOpacity: theme.shadows.card.shadowOpacity,

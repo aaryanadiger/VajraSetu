@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Path, Stop } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { useLanguage } from '../navigation/RootNavigator';
 import { useSarvamText } from '../hooks/useSarvamText';
@@ -92,11 +91,10 @@ export const HomeScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <HomeVectorAccent />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#1677FF" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.primary} />}
       >
         <View style={styles.header}>
           <View>
@@ -108,7 +106,7 @@ export const HomeScreen: React.FC = () => {
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconControl} onPress={() => setLanguageOpen(true)} accessibilityRole="button" accessibilityLabel="Choose language">
-              <Ionicons name="language-outline" size={22} color="#344054" />
+              <Ionicons name="language-outline" size={22} color={theme.colors.text.primary} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.accountBadge} onPress={() => navigation.navigate('Settings')} accessibilityRole="button" accessibilityLabel={tx('account', 'Account')}>
               <Text style={styles.accountInitials}>{initials(profile?.name)}</Text>
@@ -124,7 +122,7 @@ export const HomeScreen: React.FC = () => {
             {latest && <View style={[styles.statusPill, { backgroundColor: `${status.color}14` }]}><Ionicons name={status.icon} size={14} color={status.color} /><Text style={[styles.statusPillText, { color: status.color }]}>{statusLabel}</Text></View>}
           </View>
 
-          {loading ? <ActivityIndicator color="#1677FF" style={styles.loader} /> : (
+          {loading ? <ActivityIndicator color={theme.colors.primary} style={styles.loader} /> : (
             <>
               <View style={styles.valueLine}>
                 <Text style={styles.exposureValue}>{latest?.is_saturated ? '≥' : ''}{exposure.toFixed(1)}</Text>
@@ -146,7 +144,6 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         <TouchableOpacity style={styles.primaryAction} onPress={openScan} activeOpacity={0.9} accessibilityRole="button" accessibilityLabel={tx('scanWristband', 'Scan wristband')}>
-          <ScanActionVector />
           <View style={styles.primaryIcon}><Ionicons name="scan" size={22} color="#fff" /></View>
           <View style={styles.primaryCopy}>
             <Text style={styles.primaryTitle}>{tx('scanWristband', 'Scan wristband')}</Text>
@@ -173,7 +170,7 @@ export const HomeScreen: React.FC = () => {
             {LANGUAGE_OPTIONS.map(option => (
               <TouchableOpacity key={option.code} style={[styles.languageOption, option.code === language && styles.languageOptionActive]} onPress={() => { setLanguage(option.code); setLanguageOpen(false); }} accessibilityRole="radio" accessibilityState={{ selected: option.code === language }}>
                 <View><Text style={styles.languageNative}>{option.nativeLabel}</Text><Text style={styles.languageEnglish}>{option.label}</Text></View>
-                {option.code === language && <Ionicons name="checkmark" size={21} color="#1677FF" />}
+                {option.code === language && <Ionicons name="checkmark" size={21} color={theme.colors.primary} />}
               </TouchableOpacity>
             ))}
           </Pressable>
@@ -184,35 +181,6 @@ export const HomeScreen: React.FC = () => {
   );
 };
 
-/** Quiet linework that gives the home surface depth without competing with data. */
-const HomeVectorAccent = () => (
-  <View style={styles.homeVectorAccent} pointerEvents="none">
-    <Svg width="190" height="210" viewBox="0 0 190 210">
-      <Defs>
-        <SvgLinearGradient id="homeGlow" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#5EA6FF" stopOpacity="0.18" />
-          <Stop offset="1" stopColor="#5EA6FF" stopOpacity="0" />
-        </SvgLinearGradient>
-      </Defs>
-      <Circle cx="150" cy="42" r="72" fill="url(#homeGlow)" />
-      <Path d="M35 132 C78 91 128 96 188 48" fill="none" stroke="#1677FF" strokeOpacity="0.08" strokeWidth="1.5" />
-      <Path d="M54 161 C101 119 143 127 193 82" fill="none" stroke="#1677FF" strokeOpacity="0.05" strokeWidth="1.5" />
-      <Circle cx="56" cy="158" r="3" fill="#1677FF" fillOpacity="0.10" />
-      <Circle cx="151" cy="89" r="4" fill="#1677FF" fillOpacity="0.08" />
-    </Svg>
-  </View>
-);
-
-const ScanActionVector = () => (
-  <View style={styles.scanActionVector} pointerEvents="none">
-    <Svg width="112" height="76" viewBox="0 0 112 76">
-      <Path d="M3 70 C35 43 63 50 112 8" fill="none" stroke="#FFFFFF" strokeOpacity="0.13" strokeWidth="1.5" />
-      <Path d="M30 77 C58 54 83 55 116 28" fill="none" stroke="#FFFFFF" strokeOpacity="0.08" strokeWidth="1.5" />
-      <Circle cx="86" cy="27" r="4" fill="#FFFFFF" fillOpacity="0.12" />
-    </Svg>
-  </View>
-);
-
 const SegmentedMeter: React.FC<{ fraction: number; color: string }> = ({ fraction, color }) => {
   const filled = Math.max(0, Math.round(fraction * 24));
   return <View style={styles.meter}>{Array.from({ length: 24 }, (_, index) => <View key={index} style={[styles.segment, index < filled && { backgroundColor: color }, index === 12 && styles.thresholdSegment]} />)}</View>;
@@ -220,7 +188,7 @@ const SegmentedMeter: React.FC<{ fraction: number; color: string }> = ({ fractio
 
 const UtilityRow: React.FC<{ icon: keyof typeof Ionicons.glyphMap; title: string; value: string; valueColor?: string; last?: boolean; onPress: () => void }> = ({ icon, title, value, valueColor, last, onPress }) => (
   <TouchableOpacity style={[styles.utilityRow, last && styles.utilityRowLast]} onPress={onPress} activeOpacity={0.72} accessibilityRole="button" accessibilityLabel={`${title}: ${value}`}>
-    <View style={styles.utilityIcon}><Ionicons name={icon} size={20} color="#344054" /></View>
+    <View style={styles.utilityIcon}><Ionicons name={icon} size={20} color={theme.colors.text.primary} /></View>
     <Text style={styles.utilityTitle}>{title}</Text>
     <Text style={[styles.utilityValue, valueColor && { color: valueColor }]}>{value}</Text>
     <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
@@ -229,7 +197,7 @@ const UtilityRow: React.FC<{ icon: keyof typeof Ionicons.glyphMap; title: string
 
 const QuickAction: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }> = ({ icon, label, onPress }) => (
   <TouchableOpacity style={styles.quickAction} onPress={onPress} activeOpacity={0.8} accessibilityRole="button">
-    <Ionicons name={icon} size={23} color="#1677FF" />
+    <Ionicons name={icon} size={23} color={theme.colors.primary} />
     <Text style={styles.quickActionText}>{label}</Text>
   </TouchableOpacity>
 );
@@ -301,7 +269,7 @@ const GuideModal: React.FC<{
                   <SheetDetail icon="hourglass-outline" label={t('Reference shift')} value={t('8 hours')} />
                   <SheetDetail icon="analytics-outline" label={t('Used for')} value={t('Exposure estimate')} last />
                 </View>
-                <View style={styles.infoCallout}><Ionicons name="information-circle-outline" size={18} color="#1677FF" /><Text style={styles.infoCalloutText}>{t('This does not change your assigned work hours. Follow your supervisor and site schedule.')}</Text></View>
+                <View style={styles.infoCallout}><Ionicons name="information-circle-outline" size={18} color={theme.colors.primary} /><Text style={styles.infoCalloutText}>{t('This does not change your assigned work hours. Follow your supervisor and site schedule.')}</Text></View>
               </>
             ) : (
               <>
@@ -331,7 +299,7 @@ const GuideModal: React.FC<{
 
 const SheetHeader: React.FC<{ icon: keyof typeof Ionicons.glyphMap; title: string; closeLabel: string; onClose: () => void }> = ({ icon, title, closeLabel, onClose }) => (
   <View style={styles.guideHeader}>
-    <View style={styles.guideIcon}><Ionicons name={icon} size={20} color="#1677FF" /></View>
+    <View style={styles.guideIcon}><Ionicons name={icon} size={20} color={theme.colors.primary} /></View>
     <Text style={styles.guideTitle}>{title}</Text>
     <TouchableOpacity style={styles.sheetClose} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel}><Ionicons name="close" size={22} color="#667085" /></TouchableOpacity>
   </View>
@@ -346,57 +314,55 @@ const SheetDetail: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: strin
 );
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#F6F7F9' },
+  safe: { flex: 1, backgroundColor: theme.colors.background.top },
   content: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24, zIndex: 1 },
-  homeVectorAccent: { position: 'absolute', top: -38, right: -28 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
   brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoMark: { width: 38, height: 38 },
-  wordmark: { fontFamily: theme.typography.family.logo, fontSize: 29, color: '#101828', letterSpacing: -0.5 },
-  greeting: { marginTop: 5, fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085' },
+  wordmark: { fontFamily: theme.typography.family.logo, fontSize: 29, color: theme.colors.text.primary, letterSpacing: -0.5 },
+  greeting: { marginTop: 5, fontFamily: theme.typography.family.main, fontSize: 13, color: theme.colors.text.secondary },
   headerActions: { flexDirection: 'row', gap: 10 },
-  iconControl: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', alignItems: 'center', justifyContent: 'center' },
-  accountBadge: { width: 42, height: 42, borderRadius: 21, backgroundColor: '#1677FF', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#D0E5FF' },
+  iconControl: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.colors.background.card, borderWidth: 1, borderColor: theme.colors.border, alignItems: 'center', justifyContent: 'center' },
+  accountBadge: { width: 42, height: 42, borderRadius: 21, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: theme.colors.primaryLight },
   accountInitials: { fontFamily: theme.typography.family.bold, fontSize: 13, color: '#fff', letterSpacing: 0.3 },
-  screenTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: '#101828', marginBottom: 12 },
-  exposureSurface: { backgroundColor: '#fff', borderRadius: 24, padding: 20, borderWidth: 1, borderColor: '#EAECF0', shadowColor: '#101828', shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 1 },
+  screenTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: theme.colors.text.primary, marginBottom: 12 },
+  exposureSurface: { backgroundColor: theme.colors.background.card, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: theme.colors.border, shadowColor: '#385F59', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 1 },
   surfaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  surfaceLabel: { fontFamily: theme.typography.family.medium, fontSize: 14, color: '#475467' },
+  surfaceLabel: { fontFamily: theme.typography.family.medium, fontSize: 14, color: theme.colors.text.secondary },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
   statusPillText: { fontFamily: theme.typography.family.bold, fontSize: 10, letterSpacing: 0.4 },
   loader: { height: 108, justifyContent: 'center' },
   valueLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 24, marginBottom: 18 },
-  exposureValue: { fontFamily: theme.typography.family.bold, fontSize: 52, lineHeight: 56, color: '#101828', letterSpacing: -2 },
-  exposureUnit: { fontFamily: theme.typography.family.main, fontSize: 19, color: '#344054' },
+  exposureValue: { fontFamily: theme.typography.family.bold, fontSize: 52, lineHeight: 56, color: theme.colors.text.primary, letterSpacing: -2 },
+  exposureUnit: { fontFamily: theme.typography.family.main, fontSize: 19, color: theme.colors.text.primary },
   meter: { flexDirection: 'row', gap: 3, height: 20, alignItems: 'stretch' },
-  segment: { flex: 1, borderRadius: 2, backgroundColor: '#E4E7EC' },
+  segment: { flex: 1, borderRadius: 2, backgroundColor: theme.colors.semantic.neutral },
   thresholdSegment: { borderRightWidth: 2, borderRightColor: '#98A2B3', borderRadius: 0 },
   meterLabels: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
   meterLabel: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#98A2B3' },
-  meterLimit: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085' },
-  utilityPanel: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 16, marginTop: 16, borderWidth: 1, borderColor: '#EAECF0', overflow: 'hidden' },
-  utilityRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  meterLimit: { fontFamily: theme.typography.family.main, fontSize: 12, color: theme.colors.text.secondary },
+  utilityPanel: { backgroundColor: theme.colors.background.card, borderRadius: 20, paddingHorizontal: 16, marginTop: 16, borderWidth: 1, borderColor: theme.colors.border, overflow: 'hidden' },
+  utilityRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   utilityRowLast: { borderBottomWidth: 0 },
-  utilityIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#F2F4F7', alignItems: 'center', justifyContent: 'center' },
-  utilityTitle: { flex: 1, fontFamily: theme.typography.family.medium, fontSize: 15, color: '#344054' },
-  utilityValue: { fontFamily: theme.typography.family.semiBold, fontSize: 14, color: '#101828' },
-  primaryAction: { minHeight: 76, borderRadius: 20, backgroundColor: '#1677FF', marginTop: 16, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 13, overflow: 'hidden' },
-  scanActionVector: { position: 'absolute', right: 0, top: 0, bottom: 0 },
+  utilityIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#E8F0EC', alignItems: 'center', justifyContent: 'center' },
+  utilityTitle: { flex: 1, fontFamily: theme.typography.family.medium, fontSize: 15, color: theme.colors.text.primary },
+  utilityValue: { fontFamily: theme.typography.family.semiBold, fontSize: 14, color: theme.colors.text.primary },
+  primaryAction: { minHeight: 76, borderRadius: 20, backgroundColor: theme.colors.primary, marginTop: 16, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 13, overflow: 'hidden' },
   primaryIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#ffffff2B', alignItems: 'center', justifyContent: 'center' },
   primaryCopy: { flex: 1 },
   primaryTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 17, color: '#fff' },
-  primaryHint: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#D9EAFF', marginTop: 2 },
+  primaryHint: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#DDEDE9', marginTop: 2 },
   quickActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  quickAction: { flex: 1, minHeight: 82, backgroundColor: '#fff', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 18, padding: 14, justifyContent: 'space-between' },
-  quickActionText: { fontFamily: theme.typography.family.medium, fontSize: 13, color: '#344054', marginTop: 10 },
+  quickAction: { flex: 1, minHeight: 82, backgroundColor: theme.colors.background.card, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
+  quickActionText: { fontFamily: theme.typography.family.medium, fontSize: 13, color: theme.colors.text.primary, marginTop: 10 },
   guideBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
   guideSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34, borderTopWidth: 1, borderColor: '#fff' },
   guideHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  guideIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: '#EAF3FF', alignItems: 'center', justifyContent: 'center' },
+  guideIcon: { width: 34, height: 34, borderRadius: 11, backgroundColor: theme.colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
   guideTitle: { flex: 1, fontFamily: theme.typography.family.semiBold, fontSize: 18, color: '#101828' },
   sheetClose: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F2F4F7', alignItems: 'center', justifyContent: 'center' },
   guideItem: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, paddingVertical: 5 },
-  guideDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#1677FF', marginTop: 6 },
+  guideDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.accentWarm, marginTop: 6 },
   guideText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: 13, lineHeight: 18, color: '#475467' },
   detailIntro: { fontFamily: theme.typography.family.main, fontSize: 15, lineHeight: 22, color: '#667085', marginBottom: 16 },
   detailPanel: { borderWidth: 1, borderColor: '#EAECF0', borderRadius: 18, paddingHorizontal: 14, overflow: 'hidden', backgroundColor: '#FCFCFD' },
@@ -404,12 +370,12 @@ const styles = StyleSheet.create({
   sheetDetailLast: { borderBottomWidth: 0 },
   sheetDetailLabel: { flex: 1, fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085' },
   sheetDetailValue: { maxWidth: '43%', fontFamily: theme.typography.family.semiBold, fontSize: 13, color: '#101828', textAlign: 'right' },
-  infoCallout: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#EFF6FF', borderRadius: 16, padding: 14, marginTop: 14 },
+  infoCallout: { flexDirection: 'row', alignItems: 'flex-start', gap: 9, backgroundColor: '#EAF3EE', borderRadius: 16, padding: 14, marginTop: 14 },
   infoCalloutText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: 13, lineHeight: 19, color: '#344054' },
   largeStatus: { flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 13, marginBottom: 14 },
   largeStatusText: { fontFamily: theme.typography.family.bold, fontSize: 13, letterSpacing: 0.5 },
   detailFootnote: { fontFamily: theme.typography.family.main, fontSize: 13, lineHeight: 19, color: '#667085', marginTop: 14 },
-  sheetAction: { minHeight: 52, borderRadius: 16, backgroundColor: '#1677FF', marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
+  sheetAction: { minHeight: 52, borderRadius: 16, backgroundColor: theme.colors.primary, marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   sheetActionText: { fontFamily: theme.typography.family.semiBold, fontSize: 15, color: '#fff' },
   footerNote: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085', lineHeight: 18, marginTop: 20, textAlign: 'center', paddingHorizontal: 16 },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
@@ -418,7 +384,7 @@ const styles = StyleSheet.create({
   sheetTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: '#101828' },
   sheetNote: { fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085', marginTop: 5, marginBottom: 16 },
   languageOption: { minHeight: 62, paddingHorizontal: 14, marginBottom: 8, borderWidth: 1, borderColor: '#EAECF0', borderRadius: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  languageOptionActive: { borderColor: '#1677FF', backgroundColor: '#F0F7FF' },
+  languageOptionActive: { borderColor: theme.colors.primary, backgroundColor: '#EAF3EE' },
   languageNative: { fontFamily: theme.typography.family.semiBold, fontSize: 16, color: '#101828' },
   languageEnglish: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085', marginTop: 1 },
 });

@@ -37,7 +37,7 @@ export const LoginScreen: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <LinearGradient colors={['#DCE8F8', '#C7DCF4', '#AFCEF0']} style={styles.background} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
+      <LinearGradient colors={['#FAF4EA', '#E8F1EB', '#CFE2DA']} style={styles.background} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboard}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.brand}>
@@ -49,7 +49,7 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             <View style={styles.card}>
-              <View style={styles.iconCircle}><Ionicons name="person-outline" size={25} color="#1677FF" /></View>
+              <View style={styles.iconCircle}><Ionicons name="person-outline" size={25} color={theme.colors.primary} /></View>
               <Text style={styles.title}>Set up your profile</Text>
               <Text style={styles.description}>This phone keeps one private wristband record for its worker. No password is needed.</Text>
 
@@ -88,19 +88,19 @@ const styles = StyleSheet.create({
   brand: { alignItems: 'center' },
   logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoMark: { width: 46, height: 46 },
-  logo: { fontFamily: theme.typography.family.logo, fontSize: 39, color: '#101828', letterSpacing: -1.3 },
-  subtitle: { marginTop: 6, fontFamily: theme.typography.family.main, fontSize: 14, color: '#475467' },
-  card: { width: '100%', backgroundColor: 'rgba(255,255,255,0.92)', borderRadius: 28, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.78)', shadowColor: '#344054', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.12, shadowRadius: 24, elevation: 8 },
-  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#EAF3FF', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
-  title: { fontFamily: theme.typography.family.semiBold, fontSize: 23, letterSpacing: -0.4, color: '#101828' },
-  description: { marginTop: 7, fontFamily: theme.typography.family.main, fontSize: 13, color: '#667085', lineHeight: 19 },
+  logo: { fontFamily: theme.typography.family.logo, fontSize: 39, color: theme.colors.text.primary, letterSpacing: -1.3 },
+  subtitle: { marginTop: 6, fontFamily: theme.typography.family.main, fontSize: 14, color: theme.colors.text.secondary },
+  card: { width: '100%', backgroundColor: 'rgba(255,253,248,0.94)', borderRadius: 28, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', shadowColor: '#385F59', shadowOffset: { width: 0, height: 14 }, shadowOpacity: 0.11, shadowRadius: 24, elevation: 8 },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.primaryLight, alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  title: { fontFamily: theme.typography.family.semiBold, fontSize: 23, letterSpacing: -0.4, color: theme.colors.text.primary },
+  description: { marginTop: 7, fontFamily: theme.typography.family.main, fontSize: 13, color: theme.colors.text.secondary, lineHeight: 19 },
   fieldGroup: { gap: 13, marginTop: 22 },
   field: { gap: 6 },
-  fieldLabel: { fontFamily: theme.typography.family.medium, fontSize: 13, color: '#344054' },
-  input: { minHeight: 50, backgroundColor: '#F7F9FC', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 14, paddingHorizontal: 14, fontFamily: theme.typography.family.main, fontSize: 15, color: '#101828' },
+  fieldLabel: { fontFamily: theme.typography.family.medium, fontSize: 13, color: theme.colors.text.primary },
+  input: { minHeight: 50, backgroundColor: '#F7F5EF', borderWidth: 1, borderColor: theme.colors.border, borderRadius: 14, paddingHorizontal: 14, fontFamily: theme.typography.family.main, fontSize: 15, color: theme.colors.text.primary },
   error: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#B42318', marginTop: 12, lineHeight: 17 },
-  continueButton: { minHeight: 54, borderRadius: 16, backgroundColor: '#1677FF', marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  continueButton: { minHeight: 54, borderRadius: 16, backgroundColor: theme.colors.primary, marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   continueButtonDisabled: { opacity: 0.6 },
   continueText: { fontFamily: theme.typography.family.semiBold, fontSize: 16, color: '#fff' },
-  footer: { alignSelf: 'center', fontFamily: theme.typography.family.main, fontSize: 12, color: '#667085' },
+  footer: { alignSelf: 'center', fontFamily: theme.typography.family.main, fontSize: 12, color: theme.colors.text.secondary },
 });
