@@ -110,7 +110,6 @@ Bhojpuri is deliberately local-only because the implementation does not send Bho
 ## Important implementation boundaries
 
 - The present profile flow has no remote account, password, session expiry, or server authorisation.
-- `src/services/auth.ts` contains an unused local PIN helper. Its documented non-cryptographic fallback means it must not be considered production authentication.
 - CSV text can be generated, but the current app does not include a share/save implementation such as `expo-sharing`.
 - `getSettings()` deliberately returns fixed H₂S reference values for safety fields rather than accepting user changes.
 - The scan flow currently uses a fixed eight-hour reference period. It does not capture actual shift start/end times.

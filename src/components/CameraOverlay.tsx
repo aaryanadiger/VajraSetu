@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { theme } from '../theme';
 
 interface CameraOverlayProps {
   /** Color of the corner brackets */

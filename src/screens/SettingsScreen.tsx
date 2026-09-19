@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
   TouchableOpacity, Alert, Share, Modal, TextInput, KeyboardAvoidingView, Platform,
@@ -10,7 +10,7 @@ import { useSarvamText } from '../hooks/useSarvamText';
 import { AppHeader } from '../components/ui/AppHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadings, getWorkers, getShiftsByWorker } from '../services/db';
+import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadings } from '../services/db';
 import { generateCSV, getExportFilename } from '../services/csv';
 import { AccountProfile, AppSettings, DEFAULT_SETTINGS, INDIA_FACTORY_H2S_LIMITS } from '../types';
 import { getCurve } from '../services/calibration';

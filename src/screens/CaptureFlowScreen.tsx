@@ -187,7 +187,7 @@ export const CaptureFlowScreen: React.FC = () => {
       }
 
       const regions = await extractRegionsFromImage(photo?.base64 ?? '');
-      processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS, settings);
+      processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS);
       setResult(processed);
     } catch (error) {
       const message = error instanceof CaptureError

@@ -4,10 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // Screens
 import { HomeScreen } from '../screens/HomeScreen';
-import { WorkerRosterScreen } from '../screens/WorkerRosterScreen';
 import { CaptureFlowScreen } from '../screens/CaptureFlowScreen';
 import { WorkerHistoryScreen } from '../screens/WorkerHistoryScreen';
-import { DashboardScreen } from '../screens/DashboardScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { CleanBottomTabBar } from '../components/CleanBottomTabBar';
 
@@ -15,15 +13,7 @@ import { CleanBottomTabBar } from '../components/CleanBottomTabBar';
 
 export type HomeStackParamList = {
   HomeMain: undefined;
-  Roster: undefined;
-  Dashboard: undefined;
   Settings: undefined;
-  WorkerHistory: { workerId?: string; workerName?: string };
-};
-
-export type RosterStackParamList = {
-  RosterMain: undefined;
-  WorkerHistory: { workerId: string; workerName: string };
 };
 
 export type CaptureStackParamList = {
@@ -32,14 +22,6 @@ export type CaptureStackParamList = {
 
 export type HistoryStackParamList = {
   HistoryMain: { workerId?: string; workerName?: string } | undefined;
-};
-
-export type DashboardStackParamList = {
-  DashboardMain: undefined;
-};
-
-export type SettingsStackParamList = {
-  SettingsMain: undefined;
 };
 
 // ─── Stack Navigators ─────────────────────────────────────────────────────────
@@ -53,10 +35,7 @@ function HomeStackNavigator() {
   return (
     <HomeStack.Navigator screenOptions={{ headerShown: false }}>
       <HomeStack.Screen name="HomeMain" component={HomeScreen} />
-      <HomeStack.Screen name="Roster" component={WorkerRosterScreen} />
-      <HomeStack.Screen name="Dashboard" component={DashboardScreen} />
       <HomeStack.Screen name="Settings" component={SettingsScreen} />
-      <HomeStack.Screen name="WorkerHistory" component={WorkerHistoryScreen} />
     </HomeStack.Navigator>
   );
 }

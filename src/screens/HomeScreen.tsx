@@ -88,7 +88,6 @@ export const HomeScreen: React.FC = () => {
   const oel = settings?.oel_twa_ppm ?? 10;
   const exposure = latest?.band_valid ? latest.cumulative_ppm_hr : 0;
   const progress = latest?.band_valid ? Math.min(1, latest.twa_ppm / oel) : 0;
-  const selectedLanguage = LANGUAGE_OPTIONS.find(item => item.code === language) ?? LANGUAGE_OPTIONS[0];
   const openScan = () => navigation.navigate('Scan', { screen: 'CaptureMain' });
 
   return (

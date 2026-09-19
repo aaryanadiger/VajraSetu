@@ -67,11 +67,6 @@ export async function initDB(): Promise<void> {
       value TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS auth (
-      id        INTEGER PRIMARY KEY DEFAULT 1,
-      pin_hash  TEXT
-    );
-
     CREATE TABLE IF NOT EXISTS account_profile (
       id          INTEGER PRIMARY KEY CHECK (id = 1),
       name        TEXT NOT NULL,
@@ -137,11 +132,6 @@ export async function updateWorker(id: string, updates: Partial<Omit<Worker, 'id
   await db.runAsync(`UPDATE workers SET ${fields} WHERE id = ?`, values);
 }
 
-export async function deleteWorker(id: string): Promise<void> {
-  const db = await getDB();
-  await db.runAsync(`DELETE FROM workers WHERE id = ?`, [id]);
-}
-
 // ─── Personal account ────────────────────────────────────────────────────────
 
 export async function getAccountProfile(): Promise<AccountProfile | null> {
@@ -187,11 +177,6 @@ export async function createWristband(wb: Omit<Wristband, 'id'>): Promise<Wristb
   return { id, ...wb };
 }
 
-export async function getWristbandById(id: string): Promise<Wristband | null> {
-  const db = await getDB();
-  return db.getFirstAsync<Wristband>(`SELECT * FROM wristbands WHERE id = ?`, [id]);
-}
-
 // ─── Shifts ───────────────────────────────────────────────────────────────────
 
 export async function createShift(shift: Omit<Shift, 'id'>): Promise<Shift> {
@@ -202,24 +187,6 @@ export async function createShift(shift: Omit<Shift, 'id'>): Promise<Shift> {
     [id, shift.worker_id, shift.start_time, shift.end_time ?? null, shift.wristband_id]
   );
   return { id, ...shift };
-}
-
-export async function endShift(id: string): Promise<void> {
-  const db = await getDB();
-  await db.runAsync(`UPDATE shifts SET end_time = ? WHERE id = ?`, [new Date().toISOString(), id]);
-}
-
-export async function getShiftsByWorker(workerId: string): Promise<Shift[]> {
-  const db = await getDB();
-  return db.getAllAsync<Shift>(
-    `SELECT * FROM shifts WHERE worker_id = ? ORDER BY start_time DESC`,
-    [workerId]
-  );
-}
-
-export async function getActiveShifts(): Promise<Shift[]> {
-  const db = await getDB();
-  return db.getAllAsync<Shift>(`SELECT * FROM shifts WHERE end_time IS NULL`);
 }
 
 // ─── Readings ─────────────────────────────────────────────────────────────────
@@ -252,15 +219,6 @@ export async function getReadingsByWorker(workerId: string): Promise<Reading[]> 
      WHERE s.worker_id = ?
      ORDER BY r.captured_at DESC`,
     [workerId]
-  );
-  return rows.map(deserializeReading);
-}
-
-export async function getReadingsByShift(shiftId: string): Promise<Reading[]> {
-  const db = await getDB();
-  const rows = await db.getAllAsync<any>(
-    `SELECT * FROM readings WHERE shift_id = ? ORDER BY captured_at DESC`,
-    [shiftId]
   );
   return rows.map(deserializeReading);
 }
@@ -310,19 +268,6 @@ export async function getSettings(): Promise<AppSettings> {
 export async function setSetting(key: keyof AppSettings, value: string): Promise<void> {
   const db = await getDB();
   await db.runAsync(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value]);
-}
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-
-export async function getPinHash(): Promise<string | null> {
-  const db = await getDB();
-  const row = await db.getFirstAsync<{ pin_hash: string | null }>(`SELECT pin_hash FROM auth WHERE id = 1`);
-  return row?.pin_hash ?? null;
-}
-
-export async function setPinHash(hash: string): Promise<void> {
-  const db = await getDB();
-  await db.runAsync(`INSERT OR REPLACE INTO auth (id, pin_hash) VALUES (1, ?)`, [hash]);
 }
 
 // ─── Translation cache ───────────────────────────────────────────────────────

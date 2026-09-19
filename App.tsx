@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -24,14 +24,12 @@ export default function App() {
   });
 
   const [dbReady, setDbReady] = useState(false);
-  const [dbError, setDbError] = useState<string | null>(null);
 
   useEffect(() => {
     initDB()
       .then(() => setDbReady(true))
       .catch(e => {
         console.error('[App] DB init failed', e);
-        setDbError(String(e));
         // Allow app to proceed — screens will handle missing data gracefully
         setDbReady(true);
       });

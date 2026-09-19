@@ -10,8 +10,7 @@
  * See PRD §6.3 and §6.4 for design rationale and open questions.
  */
 
-import { AppSettings } from '../types';
-import { ProcessingResult, RiskBand, H2SIndex } from '../types';
+import { ProcessingResult, H2SIndex } from '../types';
 import { deltaEToPpmHr, getSaturationDeltaE } from './calibration';
 import { computeDeltaE, CaptureRegions, RGB } from './imageProcessing';
 
@@ -105,8 +104,7 @@ export function computeTWA(
  */
 export function computeH2SIndex(
   twaPpm: number,
-  shiftHours: number,
-  settings: AppSettings
+  shiftHours: number
 ): H2SIndex {
   const peakFactor = 2.0; // conservative peak estimate multiplier
   const maxPpmEstimate = twaPpm * peakFactor;
@@ -146,31 +144,11 @@ export function computeH2SIndex(
   };
 }
 
-// ─── Risk band classification ─────────────────────────────────────────────────
-
-export function classifyRisk(
-  twa: TWAResult,
-  h2sIndex: H2SIndex,
-  settings: AppSettings
-): RiskBand {
-  if (twa.isSaturated) return 'high';
-
-  const twaHigh = twa.twaPpm >= settings.risk_high_twa;
-  const twaElevated = twa.twaPpm >= settings.risk_elevated_twa;
-  const indexHigh = h2sIndex.value >= settings.risk_high_index;
-  const indexElevated = h2sIndex.value >= settings.risk_elevated_index;
-
-  if (twaHigh || indexHigh) return 'high';
-  if (twaElevated || indexElevated) return 'elevated';
-  return 'low';
-}
-
 // ─── Full pipeline entry point ────────────────────────────────────────────────
 
 export async function runExposurePipeline(
   regions: CaptureRegions,
   shiftHours: number,
-  settings: AppSettings,
   curveVersion = 'v1'
 ): Promise<ProcessingResult> {
   // Both indicators are corrected against the same white card area so warm
@@ -185,7 +163,7 @@ export async function runExposurePipeline(
   const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);
 
   // Step B2: H2S Index
-  const h2sIndex = computeH2SIndex(twa.twaPpm, shiftHours, settings);
+  const h2sIndex = computeH2SIndex(twa.twaPpm, shiftHours);
 
   // Risk classification
   const colourCategory = classifyCuSO4Colour(correctedSensing, sensingDeltaE);

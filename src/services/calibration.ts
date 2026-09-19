@@ -6,7 +6,7 @@
  * lab data and bump the version string. No app code change needed.
  */
 
-import { CalibrationCurve, CalibrationPoint } from '../types';
+import { CalibrationCurve } from '../types';
 
 // Static require works in Metro bundler for JSON assets
 const CURVE_V1: CalibrationCurve = require('../../calibration/h2s_curve_v1.json');
