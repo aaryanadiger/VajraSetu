@@ -448,11 +448,6 @@ const ResultStep: React.FC<{
         <Text style={styles.resultHeading}>{copy.title}</Text>
         <Text style={styles.resultBody}>{copy.body}</Text>
 
-        <View style={styles.prototypeNote}>
-          <Ionicons name="information-circle-outline" size={18} color={theme.colors.text.secondary} />
-          <Text style={styles.prototypeNoteText}>Estimated from calibration {result.calibration_curve_version} using {result.sample_count} consistent frames. It is not a live gas reading and remains provisional until controlled H₂S calibration.</Text>
-        </View>
-
         <Card style={styles.resultCard}>
           <Text style={styles.detailLabel}>{sarvamText('Estimated cumulative exposure')}</Text>
           <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.is_saturated ? '≥' : ''}{result.cumulative_ppm_hr.toFixed(1)}</Text><Text style={styles.bigUnit}>ppm·hr</Text></View>
@@ -530,8 +525,6 @@ const styles = StyleSheet.create({
   resultBadge: { marginBottom: theme.spacing.md },
   resultHeading: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xxl, color: theme.colors.text.primary, textAlign: 'center' },
   resultBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, marginBottom: theme.spacing.xl, maxWidth: 340 },
-  prototypeNote: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, backgroundColor: '#E8F1EC', borderRadius: 14, padding: theme.spacing.md, marginBottom: theme.spacing.lg },
-  prototypeNoteText: { flex: 1, fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, color: theme.colors.text.secondary },
   resultCard: { width: '100%', marginHorizontal: 0, borderRadius: 20, marginBottom: theme.spacing.lg },
   detailLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.xs, color: theme.colors.text.secondary },
   detailText: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.primary, marginTop: theme.spacing.sm },

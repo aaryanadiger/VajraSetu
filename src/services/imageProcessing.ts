@@ -219,7 +219,7 @@ interface RelativeRegion {
 // upper-right.
 const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
   reference: { x: 0.55, y: 0.08, width: 0.26, height: 0.17 },
-  expiry: { x: 0.60, y: 0.38, width: 0.28, height: 0.30, circle: true },
+  expiry: { x: 0.53, y: 0.38, width: 0.28, height: 0.30, circle: true },
   sensing: { x: 0.14, y: 0.17, width: 0.28, height: 0.29 },
 };
 

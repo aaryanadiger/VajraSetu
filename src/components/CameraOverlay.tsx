@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
   expiryMarker: {
     position: 'absolute',
     top: '38%',
-    left: '60%',
+    left: '53%',
     width: '28%',
     aspectRatio: 1,
     borderRadius: 999,

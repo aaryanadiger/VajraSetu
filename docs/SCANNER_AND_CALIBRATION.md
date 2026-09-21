@@ -70,8 +70,8 @@ CuSO₄ category is rules-based:
 
 | Category | Current rule |
 | --- | --- |
-| `low` | Fresh region, sensing ΔE ≤ 10. |
-| `elevated` | Intermediate measured colour, sensing ΔE > 10. |
+| `low` | Bright blue/green fresh colour family, or sensing ΔE ≤ 10. A fresh-colour match forces the estimated dose to zero so phone/lighting variation cannot create a false exposure warning. |
+| `elevated` | Olive/brown intermediate colour outside the fresh family with sensing ΔE > 10. |
 | `high` | Dark region: mean brightness < 120, ΔE ≥ 30, or the measured range is saturated. |
 
 Calibration v2 uses the supplied 30 ppm exposures. Dose is concentration multiplied by duration:

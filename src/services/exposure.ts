@@ -41,17 +41,35 @@ export function validateBand(expiryRGB: RGB, expiryDeltaE: number, curveVersion 
 }
 
 /**
- * CuSO4 changes blue/green → brown → black. These are deterministic colour
- * bands—not a trained model and not a concentration measurement.
+ * Fresh prototype pads are blue/green: blue remains close to red while green
+ * is the strongest channel. The measured 5–15 minute olive/brown controls all
+ * have a substantially larger blue deficit. This chromaticity check prevents
+ * exposure from being inferred from brightness or camera white balance alone.
+ * These are deterministic colour bands—not a trained model or a live gas
+ * concentration measurement.
  */
+export function isFreshCuSO4Colour(sensingRGB: RGB): boolean {
+  const brightness = (sensingRGB.r + sensingRGB.g + sensingRGB.b) / 3;
+  const blueDeficit = (sensingRGB.r + sensingRGB.g) / 2 - sensingRGB.b;
+
+  return brightness >= 130
+    && sensingRGB.g >= sensingRGB.r - 8
+    && sensingRGB.b >= sensingRGB.r - 15
+    && blueDeficit <= 18;
+}
+
 function classifyCuSO4Colour(sensingRGB: RGB, sensingDeltaE: number, curveVersion: string): ProcessingResult['colour_category'] {
   const brightness = (sensingRGB.r + sensingRGB.g + sensingRGB.b) / 3;
   const redDominant = sensingRGB.r > sensingRGB.b + 8;
 
   if (curveVersion === 'v2') {
-    // Thresholds follow the measured series: fresh ΔE 0-8, overlapping
-    // intermediate patches around ΔE 15-21, and the dark 30-minute patch at
-    // approximately ΔE 38.5.
+    // Colour family is checked before ΔE because a fresh pad can move farther
+    // from one reference photo under a different phone or light source while
+    // remaining recognisably blue/green.
+    if (isFreshCuSO4Colour(sensingRGB)) return 'low';
+
+    // Remaining thresholds follow the measured series: overlapping olive/
+    // brown intermediate patches and the distinctly dark 30-minute patch.
     if (brightness < 120 || sensingDeltaE >= 30) return 'high';
     if (sensingDeltaE > 10) return 'elevated';
     return 'low';
@@ -163,9 +181,12 @@ export async function runExposurePipeline(
   const expiryDeltaE = computeDeltaE(correctedExpiry, expiryReference);
   const sensingDeltaE = computeDeltaE(correctedSensing, sensingReference);
   const bandValid = validateBand(correctedExpiry, expiryDeltaE, curveVersion);
+  const freshCuSO4 = curveVersion === 'v2' && isFreshCuSO4Colour(correctedSensing);
 
   // Step B1: TWA
-  const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);
+  // A positive ΔE caused only by camera/lighting variation must not become a
+  // false dose when the pad still matches the measured fresh colour family.
+  const twa = computeTWA(freshCuSO4 ? 0 : sensingDeltaE, shiftHours, curveVersion);
 
   // Step B2: H2S Index
   const h2sIndex = computeH2SIndex(twa.twaPpm, shiftHours);
