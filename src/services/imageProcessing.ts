@@ -218,9 +218,9 @@ interface RelativeRegion {
 // FeSO4 dot sits toward the centre-right, and plain white card is sampled
 // upper-right.
 const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
-  reference: { x: 0.62, y: 0.12, width: 0.16, height: 0.16 },
-  expiry: { x: 0.40, y: 0.40, width: 0.25, height: 0.25, circle: true },
-  sensing: { x: 0.10, y: 0.16, width: 0.30, height: 0.30 },
+  reference: { x: 0.55, y: 0.08, width: 0.26, height: 0.17 },
+  expiry: { x: 0.60, y: 0.38, width: 0.28, height: 0.30, circle: true },
+  sensing: { x: 0.14, y: 0.17, width: 0.28, height: 0.29 },
 };
 
 interface CardBounds {
@@ -381,10 +381,19 @@ function scoreCardCandidate(reference: RGB, expiry: RGB, sensing: RGB): number {
   const neutralReferenceScore = Math.max(0, 1 - rgbChroma(reference) / 80);
   const expiryDifference = Math.min(1, channelDistance(expiry, reference) / 70);
   const sensingDifference = Math.min(1, channelDistance(sensing, reference) / 70);
+  const yellowFamily = clamp(
+    ((expiry.r - expiry.b) + (expiry.g - expiry.b)) / 110,
+    0,
+    1
+  );
 
   // The white reference is the strongest geometry signal. Both chemical pads
   // must differ from it; they may be blue, brown, yellow, or black as they age.
-  return brightnessScore * 0.8 + neutralReferenceScore * 1.2 + expiryDifference + sensingDifference;
+  return brightnessScore * 0.8
+    + neutralReferenceScore * 1.2
+    + expiryDifference * 0.7
+    + sensingDifference
+    + yellowFamily * 0.55;
 }
 
 function sampleRegion(image: DecodedImage, card: CardBounds, region: RelativeRegion, gridSize = 24): RGB {

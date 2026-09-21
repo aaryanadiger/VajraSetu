@@ -42,7 +42,7 @@ If anyone feels unwell, an alarm sounds, or a trained safety procedure tells you
 
 - **Colour category:** a deterministic comparison of the CuSO₄ patch to a provisional baseline. This is the most defensible current scanner output.
 - **Expiry ΔE:** how different the FeSO₄ expiry dot appears from its provisional fresh baseline after light correction.
-- **Cumulative ppm·hr / TWA / H₂S index:** estimates produced by a placeholder curve and a fixed eight-hour reference period. They are not validated exposure measurements.
+- **Cumulative ppm·hr / TWA / H₂S index:** estimates from a single 30 ppm calibration series and a fixed eight-hour reference period. The measured range ends at 15 ppm·hr, below the 80 ppm·hr full-shift reference, so saturated results are lower bounds rather than validated exposure measurements.
 - **India reference value shown in the UI:** a fixed app reference used for display; it is not editable by the worker and is not a statement that the scan establishes compliance.
 
 The app cannot detect a sudden gas release, absence of oxygen, other toxic gases, or a failure in PPE. Its result must never overrule a direct-reading instrument, alarm, safety officer, or emergency instruction.

@@ -86,7 +86,7 @@ export const HomeScreen: React.FC = () => {
   const statusLabel = sarvamText(status.label);
   const oel = settings?.oel_twa_ppm ?? 10;
   const exposure = latest?.band_valid ? latest.cumulative_ppm_hr : 0;
-  const progress = latest?.band_valid ? Math.min(1, latest.twa_ppm / oel) : 0;
+  const progress = latest?.band_valid ? (latest.is_saturated ? 1 : Math.min(1, latest.twa_ppm / oel)) : 0;
   const openScan = () => navigation.navigate('Scan', { screen: 'CaptureMain' });
 
   return (
@@ -131,7 +131,7 @@ export const HomeScreen: React.FC = () => {
               <SegmentedMeter fraction={progress} color={status.color} />
               <View style={styles.meterLabels}>
                 <Text style={styles.meterLabel}>0</Text>
-              <Text style={styles.meterLimit}>{sarvamText('8-hour equivalent')}: {latest?.band_valid ? latest.twa_ppm.toFixed(2) : '0.00'} / {oel} ppm</Text>
+              <Text style={styles.meterLimit}>{sarvamText('8-hour equivalent')}: {latest?.is_saturated ? '≥' : ''}{latest?.band_valid ? latest.twa_ppm.toFixed(2) : '0.00'} / {oel} ppm</Text>
                 <Text style={styles.meterLabel}>{oel}</Text>
               </View>
             </>

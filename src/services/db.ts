@@ -30,7 +30,7 @@ export async function initDB(): Promise<void> {
       id                           TEXT PRIMARY KEY,
       batch_id                     TEXT NOT NULL,
       issued_at                    TEXT NOT NULL,
-      expiry_calibration_version   TEXT NOT NULL DEFAULT 'v1'
+      expiry_calibration_version   TEXT NOT NULL DEFAULT 'v2'
     );
 
     CREATE TABLE IF NOT EXISTS shifts (
@@ -56,7 +56,7 @@ export async function initDB(): Promise<void> {
       h2s_index                   REAL NOT NULL DEFAULT 0,
       index_mode                  TEXT NOT NULL DEFAULT 'estimated_single_sample',
       risk_band                   TEXT NOT NULL DEFAULT 'invalid',
-      calibration_curve_version   TEXT NOT NULL DEFAULT 'v1',
+      calibration_curve_version   TEXT NOT NULL DEFAULT 'v2',
       scan_quality                REAL NOT NULL DEFAULT 0,
       sample_count                INTEGER NOT NULL DEFAULT 1,
       is_saturated                INTEGER NOT NULL DEFAULT 0,
@@ -94,6 +94,14 @@ export async function initDB(): Promise<void> {
 
   await ensureReadingColumns(db);
   await _ensureDefaultSettings(db);
+  await migratePrototypeCalibration(db);
+}
+
+/** Move future scans off the placeholder curve without changing saved readings. */
+async function migratePrototypeCalibration(db: SQLite.SQLiteDatabase): Promise<void> {
+  await db.runAsync(
+    `UPDATE settings SET value = 'v2' WHERE key = 'calibration_curve_version' AND value = 'v1'`
+  );
 }
 
 /** Add scanner metadata without deleting readings created by older builds. */

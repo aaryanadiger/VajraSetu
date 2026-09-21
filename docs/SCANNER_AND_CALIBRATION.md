@@ -32,8 +32,8 @@ Print four small, non-reactive, high-contrast registration marks or a code aroun
 4. On tap, three higher-quality JPEGs are captured while the user holds steady.
 5. `react-native-fast-opencv` decodes each JPEG. Deterministic TypeScript searches and samples each frame independently.
 6. The app rejects the scan if cross-frame CIEDE2000 differences indicate movement or changing light. Otherwise it uses median RGB values to reduce camera noise.
-7. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from provisional fresh baselines.
-8. The versioned FeSO₄ range gates the result as valid/invalid. The CuSO₄ patch produces a colour category and provisional ppm·hr estimate.
+7. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from the v2 fresh references measured from the supplied photographs.
+8. FeSO₄ must be both close to the measured fresh reference and remain in the expected yellow colour family. The CuSO₄ patch produces a colour category and limited-range ppm·hr estimate.
 9. The result, image-quality score, sample count, saturation state, linked wristband record, and an 8-hour reference shift are saved to local SQLite.
 
 ## Recognition checks and user feedback
@@ -61,26 +61,38 @@ The implementation intentionally has no ML classifier or dataset dependency. A d
 
 ## Current colour and exposure rules
 
-After white balancing against the captured reference patch, the app compares patches with two provisional baseline RGB values in `src/services/exposure.ts`:
+After white balancing against the captured reference patch, calibration v2 compares patches with measured references stored in `calibration/h2s_curve_v2.json`:
 
-- CuSO₄ fresh baseline: `{ r: 174, g: 190, b: 181 }`
-- FeSO₄ fresh baseline: `{ r: 201, g: 168, b: 55 }`
+- CuSO₄ fresh baseline: `{ r: 195, g: 231, b: 216 }`
+- FeSO₄ fresh baseline: `{ r: 245, g: 208, b: 123 }`
 
 CuSO₄ category is rules-based:
 
 | Category | Current rule |
 | --- | --- |
-| `low` | Neither dark nor red-dominant and ΔE < 22. |
-| `elevated` | Red-dominant or ΔE ≥ 22. |
-| `high` | Mean RGB brightness < 72 or ΔE ≥ 46. |
+| `low` | Fresh region, sensing ΔE ≤ 10. |
+| `elevated` | Intermediate measured colour, sensing ΔE > 10. |
+| `high` | Dark region: mean brightness < 120, ΔE ≥ 30, or the measured range is saturated. |
 
-The provisional calibration asset, `calibration/h2s_curve_v1.json`, maps sensing ΔE to cumulative ppm·hr by piecewise-linear interpolation. TWA is calculated as:
+Calibration v2 uses the supplied 30 ppm exposures. Dose is concentration multiplied by duration:
+
+| Test duration | Cumulative dose |
+| --- | --- |
+| 0 minutes | 0 ppm·hr |
+| 5 minutes | 2.5 ppm·hr |
+| 10 minutes | 5 ppm·hr |
+| 15 minutes | 7.5 ppm·hr |
+| 30 minutes | 15 ppm·hr |
+
+The photographed 5, 10, and 15 minute patches are not monotonic and the 5/15 minute colours substantially overlap. V2 therefore pools this region around a 5 ppm·hr midpoint rather than claiming those samples can be separated reliably. At or above the dark 30-minute control, the result is a lower bound of `≥15 ppm·hr`.
+
+The Factories Act Second Schedule reference is 10 ppm over 8 hours (80 ppm·hr) and 15 ppm over 15 minutes (3.75 ppm·hr). At 30 ppm, equivalent calibration durations would be 160 minutes and 7.5 minutes respectively. The supplied test series brackets the short-term dose but does not reach the full-shift dose. TWA is displayed as:
 
 ```text
 TWA ppm = cumulative ppm·hr / 8 hours
 ```
 
-The eight-hour value is fixed in `CaptureFlowScreen.tsx`; it is not the worker's actual measured shift duration.
+The eight-hour value is fixed in `CaptureFlowScreen.tsx`. Once the sensing patch reaches the upper measured colour, both ppm·hr and TWA are displayed as lower bounds; they must not be compared as exact values against the 80 ppm·hr full-shift reference.
 
 ## Calibration requirements before a field trial
 
@@ -97,9 +109,9 @@ Use a documented controlled study for the exact final formulation, substrate, do
 9. **Run usability testing.** Observe workers performing the scan in normal PPE and work lighting. Measure retry rate, alignment time, comprehension, and unsafe interpretations.
 10. **Obtain professional review.** An industrial hygienist/EHS lead and relevant legal/regulatory reviewer must approve the intended operational use.
 
-## Versioned validity threshold
+## Versioned validity rule
 
-The runtime now reads the FeSO₄ validity range only from the active calibration JSON. In provisional `v1`, the accepted expiry ΔE range is 0–8. This removes the previous duplicate hard-coded threshold, but the value itself still requires controlled fresh/expired sample validation.
+The runtime reads FeSO₄ references and gates from the active calibration JSON. V2 accepts a fresh-reference ΔE of 0–18 only when the corrected patch is also clearly yellow: sufficiently bright, red/green above blue, and not strongly green-dominant. This fixes the false rejection seen when the real fresh yellow patch produced ΔE 11.40 against the old placeholder reference. Expired controls are still required to validate the false-valid rate.
 
 ## Practical scanner test matrix
 

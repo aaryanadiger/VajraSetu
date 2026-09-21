@@ -11,16 +11,12 @@
  */
 
 import { ProcessingResult, H2SIndex } from '../types';
-import { deltaEToPpmHr, getSaturationDeltaE, isBandValid } from './calibration';
+import { deltaEToPpmHr, getCurve, getSaturationDeltaE, isBandValid } from './calibration';
 import { computeDeltaE, CaptureRegions, RGB } from './imageProcessing';
 
-// Provisional CuSO4 baseline sampled from the supplied unexposed pad photograph.
-// Replace this with lab-measured values once controlled exposure samples exist.
-const CUSO4_UNEXPOSED_RGB: RGB = { r: 174, g: 190, b: 181 };
-// Provisional fresh FeSO4 reference sampled from the supplied band photograph.
-// Replace this and the threshold with controlled expiry samples before treating
-// this as a safety decision.
-const FESO4_FRESH_RGB: RGB = { r: 201, g: 168, b: 55 };
+// Legacy v1 fallbacks. Measured v2 references live in the versioned JSON asset.
+const LEGACY_CUSO4_UNEXPOSED_RGB: RGB = { r: 174, g: 190, b: 181 };
+const LEGACY_FESO4_FRESH_RGB: RGB = { r: 201, g: 168, b: 55 };
 const TARGET_WHITE_RGB: RGB = { r: 245, g: 245, b: 245 };
 
 function clampChannel(value: number): number {
@@ -38,19 +34,28 @@ function whiteBalance(sample: RGB, capturedWhite: RGB): RGB {
 
 // ─── Band validity gate (Step A) ─────────────────────────────────────────────
 
-export function validateBand(expiryDeltaE: number, curveVersion = 'v1'): boolean {
-  // The versioned calibration asset is the single source of truth. Its limits
-  // remain provisional until controlled fresh/expired samples are validated.
-  return Number.isFinite(expiryDeltaE) && isBandValid(expiryDeltaE, curveVersion);
+export function validateBand(expiryRGB: RGB, expiryDeltaE: number, curveVersion = 'v2'): boolean {
+  // v2 requires both proximity to the measured fresh sample and the expected
+  // yellow colour family. This is more robust than one very narrow ΔE cutoff.
+  return isBandValid(expiryDeltaE, expiryRGB, curveVersion);
 }
 
 /**
  * CuSO4 changes blue/green → brown → black. These are deterministic colour
  * bands—not a trained model and not a concentration measurement.
  */
-function classifyCuSO4Colour(sensingRGB: RGB, sensingDeltaE: number): ProcessingResult['colour_category'] {
+function classifyCuSO4Colour(sensingRGB: RGB, sensingDeltaE: number, curveVersion: string): ProcessingResult['colour_category'] {
   const brightness = (sensingRGB.r + sensingRGB.g + sensingRGB.b) / 3;
   const redDominant = sensingRGB.r > sensingRGB.b + 8;
+
+  if (curveVersion === 'v2') {
+    // Thresholds follow the measured series: fresh ΔE 0-8, overlapping
+    // intermediate patches around ΔE 15-21, and the dark 30-minute patch at
+    // approximately ΔE 38.5.
+    if (brightness < 120 || sensingDeltaE >= 30) return 'high';
+    if (sensingDeltaE > 10) return 'elevated';
+    return 'low';
+  }
 
   if (brightness < 72 || sensingDeltaE >= 46) return 'high';
   if (redDominant || sensingDeltaE >= 22) return 'elevated';
@@ -69,7 +74,7 @@ export interface TWAResult {
 export function computeTWA(
   sensingDeltaE: number,
   shiftHours: number,
-  curveVersion = 'v1'
+  curveVersion = 'v2'
 ): TWAResult {
   const saturationDeltaE = getSaturationDeltaE(curveVersion);
   const isSaturated = sensingDeltaE >= saturationDeltaE;
@@ -146,15 +151,18 @@ export function computeH2SIndex(
 export async function runExposurePipeline(
   regions: CaptureRegions,
   shiftHours: number,
-  curveVersion = 'v1'
+  curveVersion = 'v2'
 ): Promise<ProcessingResult> {
   // Both indicators are corrected against the same white card area so warm
   // factory lighting does not look like a chemical colour change.
   const correctedExpiry = whiteBalance(regions.expiryRGB, regions.referenceRGB);
   const correctedSensing = whiteBalance(regions.sensingRGB, regions.referenceRGB);
-  const expiryDeltaE = computeDeltaE(correctedExpiry, FESO4_FRESH_RGB);
-  const sensingDeltaE = computeDeltaE(correctedSensing, CUSO4_UNEXPOSED_RGB);
-  const bandValid = validateBand(expiryDeltaE, curveVersion);
+  const curve = getCurve(curveVersion);
+  const expiryReference = curve.expiry_reference_rgb ?? LEGACY_FESO4_FRESH_RGB;
+  const sensingReference = curve.sensing_reference_rgb ?? LEGACY_CUSO4_UNEXPOSED_RGB;
+  const expiryDeltaE = computeDeltaE(correctedExpiry, expiryReference);
+  const sensingDeltaE = computeDeltaE(correctedSensing, sensingReference);
+  const bandValid = validateBand(correctedExpiry, expiryDeltaE, curveVersion);
 
   // Step B1: TWA
   const twa = computeTWA(sensingDeltaE, shiftHours, curveVersion);
@@ -163,7 +171,7 @@ export async function runExposurePipeline(
   const h2sIndex = computeH2SIndex(twa.twaPpm, shiftHours);
 
   // Risk classification
-  const colourCategory = classifyCuSO4Colour(correctedSensing, sensingDeltaE);
+  const colourCategory = classifyCuSO4Colour(correctedSensing, sensingDeltaE, curveVersion);
   const riskBand = !bandValid
     ? 'invalid'
     : colourCategory === 'high' || twa.isSaturated

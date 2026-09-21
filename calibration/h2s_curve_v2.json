@@ -1,0 +1,40 @@
+{
+  "version": "v2",
+  "description": "Measured prototype calibration from the supplied 30 ppm H2S series at 0, 5, 10, 15, and 30 minutes. The 5-15 minute samples overlap visually, so they are pooled into an intermediate 5 ppm·hr estimate instead of reporting false precision.",
+  "source": {
+    "concentration_ppm": 30,
+    "exposure_minutes": [0, 5, 10, 15, 30],
+    "cumulative_ppm_hr": [0, 2.5, 5, 7.5, 15],
+    "measured_max_ppm_hr": 15,
+    "india_reference_ppm_hr": {
+      "eight_hour_twa_10_ppm": 80,
+      "fifteen_minute_stel_15_ppm": 3.75
+    },
+    "equivalent_30_ppm_test_minutes": {
+      "eight_hour_twa_reference": 160,
+      "fifteen_minute_stel_reference": 7.5
+    },
+    "limitations": "Single photographed series with no replicates and no cross-interference challenge. The series brackets the 3.75 ppm·hr STEL dose but does not calibrate the 80 ppm·hr full-shift dose. Use for prototype categorisation only."
+  },
+  "sensing_reference_rgb": { "r": 195, "g": 231, "b": 216 },
+  "expiry_reference_rgb": { "r": 245, "g": 208, "b": 123 },
+  "expiry_yellow_gate": {
+    "min_brightness": 120,
+    "min_red_minus_blue": 45,
+    "min_green_minus_blue": 20,
+    "min_red_to_green_ratio": 0.9
+  },
+  "expiry_valid_range": {
+    "min": 0,
+    "max": 18,
+    "description": "Fresh yellow FeSO4 reference tolerance after white balancing; the yellow-family gate must also pass."
+  },
+  "sensing_saturation_delta_e": 38.5,
+  "points": [
+    { "deltaE": 0, "cumulative_ppm_hr": 0, "note": "fresh band reference" },
+    { "deltaE": 8, "cumulative_ppm_hr": 0, "note": "fresh/reference photographic variation" },
+    { "deltaE": 15, "cumulative_ppm_hr": 5, "note": "pooled midpoint of visually overlapping 5-15 minute samples" },
+    { "deltaE": 20.5, "cumulative_ppm_hr": 5, "note": "intermediate plateau avoids false precision" },
+    { "deltaE": 38.5, "cumulative_ppm_hr": 15, "note": "30 ppm for 30 minutes; upper measured bound" }
+  ]
+}

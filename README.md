@@ -4,7 +4,7 @@ Vajra Setu is a worker-first mobile prototype for recording an H₂S wristband c
 
 It is designed to be simple in a factory setting: one device belongs to one worker, the home screen has one main action—**Scan wristband**—and all critical status is expressed with a label and colour together.
 
-> **Prototype safety boundary:** the current calibration curve, fresh-colour baselines, validity threshold, and ppm estimates are placeholders. The application is not a real-time gas detector, does not measure instantaneous peaks, and must not be used to establish legal compliance or make an emergency decision. Follow the site's gas-monitor, emergency, PPE, and supervision procedures.
+> **Prototype safety boundary:** calibration v2 is derived from one supplied 30 ppm series covering only 0–15 ppm·hr, without replicates or cross-interference testing. It does not validate the 80 ppm·hr full-shift reference. The application is not a real-time gas detector, does not measure instantaneous peaks, and must not be used to establish legal compliance or make an emergency decision. Follow the site's gas-monitor, emergency, PPE, and supervision procedures.
 
 ## What is implemented
 
@@ -76,7 +76,8 @@ src/services/exposure.ts        Validity gate, colour category, TWA and risk res
 src/services/calibration.ts     Calibration-curve loader and interpolation
 src/services/db.ts              SQLite schema and data access
 src/services/translation.ts     Local copy, Sarvam fallback, and cache orchestration
-calibration/h2s_curve_v1.json   Provisional calibration asset—replace after lab work
+calibration/h2s_curve_v1.json   Legacy placeholder curve retained for old readings
+calibration/h2s_curve_v2.json   Supplied 30 ppm prototype calibration series
 plugins/                        Persistent native build fixes for Expo prebuild
 docs/                           Product, safety, scanner, and development documentation
 ```

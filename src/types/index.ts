@@ -9,10 +9,25 @@ export interface CalibrationPoint {
   cumulative_ppm_hr: number;
 }
 
+export interface CalibrationRGB {
+  r: number;
+  g: number;
+  b: number;
+}
+
 export interface CalibrationCurve {
   version: string;
   description: string;
   expiry_valid_range: { min: number; max: number };
+  /** White-balanced fresh patch references. Added in measured calibration v2. */
+  sensing_reference_rgb?: CalibrationRGB;
+  expiry_reference_rgb?: CalibrationRGB;
+  expiry_yellow_gate?: {
+    min_brightness: number;
+    min_red_minus_blue: number;
+    min_green_minus_blue: number;
+    min_red_to_green_ratio: number;
+  };
   sensing_saturation_delta_e: number;
   points: CalibrationPoint[];
 }
@@ -121,7 +136,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   risk_high_twa: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
   risk_elevated_index: 10,
   risk_high_index: 25,
-  calibration_curve_version: 'v1',
+  calibration_curve_version: 'v2',
   unit: 'ppm_hr',
 };
 

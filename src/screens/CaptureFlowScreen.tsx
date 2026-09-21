@@ -457,10 +457,10 @@ const ResultStep: React.FC<{
           <Text style={styles.detailLabel}>{sarvamText('Estimated cumulative exposure')}</Text>
           <View style={styles.bigMetricRow}><Text style={styles.bigMetric}>{result.is_saturated ? '≥' : ''}{result.cumulative_ppm_hr.toFixed(1)}</Text><Text style={styles.bigUnit}>ppm·hr</Text></View>
           <View style={styles.resultRule} />
-          <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('8-hour equivalent')}</Text><Text style={styles.detailValue}>{result.twa_ppm.toFixed(2)} ppm TWA</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('8-hour equivalent')}</Text><Text style={styles.detailValue}>{result.is_saturated ? '≥' : ''}{result.twa_ppm.toFixed(2)} ppm TWA</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'India TWA limit')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('Image quality')}</Text><Text style={styles.detailValue}>{Math.round(result.scan_quality * 100)}%</Text></View>
-          {result.is_saturated && <Text style={styles.detailSub}>The sensing patch is at or beyond the calibrated colour range; the actual cumulative exposure may be higher.</Text>}
+          {result.is_saturated && <Text style={styles.detailSub}>The sensing patch is beyond the measured 0–15 ppm·hr range. The actual exposure may be much higher; do not compare this minimum value with the 80 ppm·hr full-shift reference.</Text>}
         </Card>
 
         <Button label={tx('done', 'Done')} onPress={onDone} style={styles.fullButton} />

@@ -165,7 +165,7 @@ const ReadingCard: React.FC<{ reading: Reading }> = ({ reading }) => {
             <Text style={styles.readingMetricVal}>{reading.is_saturated ? '≥' : ''}{reading.cumulative_ppm_hr.toFixed(1)}</Text>
             <Text style={styles.readingMetricUnit}> ppm·hr</Text>
           </View>
-          <Text style={styles.readingIndexText}>{t('8-hour equivalent')}: {reading.twa_ppm.toFixed(2)} ppm{reading.scan_quality > 0 ? ` · ${t('Image quality')}: ${Math.round(reading.scan_quality * 100)}%` : ''}</Text>
+          <Text style={styles.readingIndexText}>{t('8-hour equivalent')}: {reading.is_saturated ? '≥' : ''}{reading.twa_ppm.toFixed(2)} ppm{reading.scan_quality > 0 ? ` · ${t('Image quality')}: ${Math.round(reading.scan_quality * 100)}%` : ''}</Text>
         </>
       ) : (
         <Text style={styles.invalidText}>{t('Band invalid — no reading')}</Text>
