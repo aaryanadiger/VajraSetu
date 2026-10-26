@@ -1,6 +1,0 @@
-flowchart LR
-  A["Three-frame capture"] --> Q{"Image quality passes?"}
-  Q -- Yes --> V{"Validity dot passes?"}
-  Q -- No --> T["Retry capture"]
-  V -- Yes --> R["Colour category + record"]
-  V -- No --> X["Replace band"]

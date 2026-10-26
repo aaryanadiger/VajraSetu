@@ -1,7 +1,0 @@
-flowchart LR
- A["Camera / 3 frames"] --> Q{"Quality OK?"}
- Q -- No --> T["Retry"]
- Q -- Yes --> P["OpenCV / reference normalisation / Lab + DE00"]
- P --> V{"Dot valid?"}
- V -- No --> X["Replace band"]
- V -- Yes --> R["Category + SQLite history"]

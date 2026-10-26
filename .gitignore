@@ -1,5 +1,8 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-.gitignore
+# Local presentation/chart build artifacts
+/.chart-data-*/
+/.tenet-presentation-build/
+/output/tenet/
 # dependencies
 node_modules/
 
