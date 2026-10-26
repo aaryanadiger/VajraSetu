@@ -34,7 +34,8 @@ Print four small, non-reactive, high-contrast registration marks or a code aroun
 6. The app rejects the scan if cross-frame CIEDE2000 differences indicate movement or changing light. Otherwise it uses median RGB values to reduce camera noise.
 7. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from the v2 fresh references measured from the supplied photographs.
 8. FeSO₄ must be both close to the measured fresh reference and remain in the expected yellow colour family. The CuSO₄ patch produces a colour category and limited-range ppm·hr estimate.
-9. The result, image-quality score, sample count, saturation state, linked wristband record, and an 8-hour reference shift are saved to local SQLite.
+9. The result, image-quality score, sample count, saturation state, linked wristband/worker/shift, app/build version, calibration version, device model, OS, and timestamp are saved atomically to local SQLite.
+10. If that transaction fails, the result remains visible with **Result not saved** and offers **Retry saving** or a one-result CSV export. A failed write is never presented as saved history.
 
 ## Recognition checks and user feedback
 
@@ -110,6 +111,8 @@ Use a documented controlled study for the exact final formulation, substrate, do
 10. **Obtain professional review.** An industrial hygienist/EHS lead and relevant legal/regulatory reviewer must approve the intended operational use.
 
 ## Versioned validity rule
+
+The runtime validates every registered JSON curve during startup, freezes it in memory, and rejects duplicate/out-of-order points, decreasing dose values, invalid RGB data, malformed gates, and unknown active versions. The active version is explicit in Settings and every result/reading. A changed curve must be a new versioned asset; existing versions are immutable.
 
 The runtime reads FeSO₄ references and gates from the active calibration JSON. V2 accepts a fresh-reference ΔE of 0–18 only when the corrected patch is also clearly yellow: sufficiently bright, red/green above blue, and not strongly green-dominant. This fixes the false rejection seen when the real fresh yellow patch produced ΔE 11.40 against the old placeholder reference. Expired controls are still required to validate the false-valid rate.
 

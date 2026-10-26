@@ -16,8 +16,7 @@
     "android": {
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -37,9 +36,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Vajra Setu to use the camera to scan exposure wristbands."
+          "cameraPermission": "Allow Vajra Setu to use the camera to scan exposure wristbands.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
         }
-      ]
+      ],
+      "expo-sharing",
+      "expo-dev-client"
     ],
     "extra": {
       "eas": {

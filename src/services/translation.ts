@@ -332,32 +332,30 @@ export function translateUi(key: TranslationKey, language: AppLanguage, fallback
 }
 
 export function isSarvamConfigured(): boolean {
-  return Boolean(process.env.EXPO_PUBLIC_SARVAM_API_KEY);
+  return Boolean(process.env.EXPO_PUBLIC_TRANSLATION_PROXY_URL);
 }
 
 export async function translateWithSarvam(input: string, targetLanguage: AppLanguage): Promise<string> {
   if (targetLanguage === 'en-IN') return input;
   if (targetLanguage === 'bho-IN') throw new Error('Sarvam Translate does not currently list Bhojpuri support');
-  const apiKey = process.env.EXPO_PUBLIC_SARVAM_API_KEY;
-  if (!apiKey) throw new Error('Missing EXPO_PUBLIC_SARVAM_API_KEY');
+  const proxyUrl = process.env.EXPO_PUBLIC_TRANSLATION_PROXY_URL;
+  if (!proxyUrl) throw new Error('Translation proxy is not configured');
 
-  const response = await fetch('https://api.sarvam.ai/translate', {
+  const response = await fetch(proxyUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'api-subscription-key': apiKey,
     },
     body: JSON.stringify({
       input,
       source_language_code: 'en-IN',
       target_language_code: targetLanguage,
-      model: 'sarvam-translate:v1',
     }),
   });
 
-  if (!response.ok) throw new Error(`Sarvam translation failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Translation proxy failed: ${response.status}`);
   const payload = await response.json() as { translated_text?: string };
-  if (!payload.translated_text) throw new Error('Sarvam returned no translated text');
+  if (!payload.translated_text) throw new Error('Translation proxy returned no translated text');
   return payload.translated_text;
 }
 

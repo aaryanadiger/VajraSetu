@@ -1,0 +1,6 @@
+flowchart LR
+  B["Passive indicator card"] --> C["Expo Camera / 3 frames"]
+  C --> P["OpenCV / CIELAB + DE00"]
+  P --> R["Validity + colour rules"]
+  R --> U["Result + safety text"]
+  U --> D[("SQLite / local history")]

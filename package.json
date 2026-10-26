@@ -10,14 +10,18 @@
     "@react-navigation/native": "^7.3.18",
     "@react-navigation/native-stack": "^7.18.10",
     "expo": "~57.0.23",
+    "expo-application": "~57.0.3",
     "expo-asset": "~57.0.16",
     "expo-blur": "~57.0.3",
     "expo-build-properties": "~57.0.21",
     "expo-camera": "~57.0.4",
     "expo-constants": "~57.0.17",
+    "expo-dev-client": "~57.0.20",
+    "expo-device": "~57.0.2",
     "expo-file-system": "~57.0.6",
     "expo-font": "^57.0.3",
     "expo-linear-gradient": "~57.0.1",
+    "expo-sharing": "~57.0.24",
     "expo-sqlite": "^57.0.2",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
@@ -28,14 +32,20 @@
     "react-native-svg": "15.15.4"
   },
   "devDependencies": {
+    "@types/node": "^26.6.5",
     "@types/react": "~19.2.2",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "translation-proxy": "node server/translation-proxy.mjs",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "test:native-readiness": "node scripts/native-readiness-check.mjs"
   },
   "private": true
 }

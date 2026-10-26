@@ -15,7 +15,7 @@ It is designed to be simple in a factory setting: one device belongs to one work
 - FeSO₄ band-validity gate; CuSO₄ rule-based colour category (`low`, `elevated`, or `high`).
 - A provisional ΔE → cumulative ppm·hr → 8-hour TWA pipeline with image-quality and saturation metadata.
 - English, Bhojpuri, Hindi, Marathi, and Kannada UI support. Common safety copy is packaged offline; supported cache misses can use Sarvam Translate and are persisted locally.
-- Local Expo SQLite storage and CSV generation.
+- Atomic local SQLite storage, visible save-failure recovery, and complete native CSV sharing.
 - iOS 27 scene lifecycle support and a config plugin for workspaces whose path contains spaces.
 
 ## Documentation
@@ -58,13 +58,18 @@ The phone and computer must be on the same Wi-Fi network. See the [development g
 
 ## Configuration
 
-Copy the following into a local `.env` file only when Sarvam fallback translations are needed:
+Sarvam is disabled unless the app is pointed at the included server-side proxy. Keep the secret only in the proxy process:
 
 ```dotenv
-EXPO_PUBLIC_SARVAM_API_KEY=your_sarvam_api_key
+# server environment (never EXPO_PUBLIC)
+SARVAM_API_KEY=your_sarvam_api_key
+PORT=8787
+
+# app environment; this URL is not a secret
+EXPO_PUBLIC_TRANSLATION_PROXY_URL=http://YOUR_COMPUTER_LAN_IP:8787/translate
 ```
 
-`EXPO_PUBLIC_*` values are included in a client build. Do **not** treat this key as secret in a production release; move translation requests behind an authenticated backend or proxy before release. Offline bundled copy remains available when no key or network is available.
+Run `npm run translation-proxy` for local prototyping. `EXPO_PUBLIC_*` values are included in a client build, so the app never reads a Sarvam key. Offline bundled copy remains available when the proxy or network is unavailable. Add authentication and production-grade rate limiting before deploying the proxy publicly.
 
 ## Project layout
 
@@ -84,16 +89,18 @@ docs/                           Product, safety, scanner, and development docume
 
 ## Current status
 
-This repository intentionally treats camera alignment and colour categorisation as a prototype feature. Before a pilot or field deployment, complete the calibration and validation gates in [Scanner and calibration](docs/SCANNER_AND_CALIBRATION.md), secure translation credentials, add automated tests, and complete an EHS/legal review for the intended state and facility.
+This repository intentionally treats camera alignment and colour categorisation as a prototype feature. Before a pilot or field deployment, complete the calibration and validation gates in [Scanner and calibration](docs/SCANNER_AND_CALIBRATION.md), complete physical-device evidence, and complete an EHS/legal review for the intended state and facility.
 
 ## Verification
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
+npm test
+npm run test:native-readiness
 npx expo export --platform ios --output-dir /tmp/vajrasetu-ios-export
 ```
 
-There is currently no automated test suite. The required manual device checks are listed in the [development guide](docs/DEVELOPMENT.md).
+Automated tests cover representative scanner images, image rejection, frame consistency, expiry validity, colour categories, interpolation, saturation, and CSV contents. Native OpenCV/camera behaviour still requires the physical-device matrix in the [development guide](docs/DEVELOPMENT.md).
 
 ## License
 

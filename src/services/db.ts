@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { AccountProfile, Worker, Shift, Wristband, Reading, AppSettings, DEFAULT_SETTINGS, INDIA_FACTORY_H2S_LIMITS } from '../types';
+import { getCurve, validateAllCurves } from './calibration';
 
 let _db: SQLite.SQLiteDatabase | null = null;
 
@@ -13,6 +14,7 @@ export async function getDB(): Promise<SQLite.SQLiteDatabase> {
 // ─── Schema Init ──────────────────────────────────────────────────────────────
 
 export async function initDB(): Promise<void> {
+  validateAllCurves();
   const db = await getDB();
 
   await db.execAsync(`
@@ -61,6 +63,11 @@ export async function initDB(): Promise<void> {
       sample_count                INTEGER NOT NULL DEFAULT 1,
       is_saturated                INTEGER NOT NULL DEFAULT 0,
       raw_image_path              TEXT,
+      app_version                 TEXT NOT NULL DEFAULT 'unknown',
+      build_version               TEXT NOT NULL DEFAULT 'unknown',
+      device_model                TEXT NOT NULL DEFAULT 'unknown',
+      os_name                     TEXT NOT NULL DEFAULT 'unknown',
+      os_version                  TEXT NOT NULL DEFAULT 'unknown',
       FOREIGN KEY (shift_id) REFERENCES shifts(id),
       FOREIGN KEY (wristband_id) REFERENCES wristbands(id)
     );
@@ -112,6 +119,11 @@ async function ensureReadingColumns(db: SQLite.SQLiteDatabase): Promise<void> {
     ['scan_quality', 'REAL NOT NULL DEFAULT 0'],
     ['sample_count', 'INTEGER NOT NULL DEFAULT 1'],
     ['is_saturated', 'INTEGER NOT NULL DEFAULT 0'],
+    ['app_version', "TEXT NOT NULL DEFAULT 'unknown'"],
+    ['build_version', "TEXT NOT NULL DEFAULT 'unknown'"],
+    ['device_model', "TEXT NOT NULL DEFAULT 'unknown'"],
+    ['os_name', "TEXT NOT NULL DEFAULT 'unknown'"],
+    ['os_version', "TEXT NOT NULL DEFAULT 'unknown'"],
   ] as const;
 
   for (const [name, definition] of additions) {
@@ -228,8 +240,9 @@ export async function saveReading(reading: Omit<Reading, 'id'>): Promise<Reading
       id, shift_id, wristband_id, captured_at, band_valid, expiry_delta_e,
       sensing_delta_e, cumulative_ppm_hr, twa_ppm, h2s_index, index_mode,
       risk_band, calibration_curve_version, scan_quality, sample_count,
-      is_saturated, raw_image_path
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      is_saturated, raw_image_path, app_version, build_version, device_model,
+      os_name, os_version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, reading.shift_id, reading.wristband_id, reading.captured_at,
       reading.band_valid ? 1 : 0, reading.expiry_delta_e, reading.sensing_delta_e,
@@ -237,9 +250,61 @@ export async function saveReading(reading: Omit<Reading, 'id'>): Promise<Reading
       reading.index_mode, reading.risk_band, reading.calibration_curve_version,
       reading.scan_quality, reading.sample_count, reading.is_saturated ? 1 : 0,
       reading.raw_image_path ?? null,
+      reading.app_version, reading.build_version, reading.device_model,
+      reading.os_name, reading.os_version,
     ]
   );
   return { id, ...reading };
+}
+
+export interface CompletedScanInput {
+  worker_id: string;
+  batch_id: string;
+  issued_at: string;
+  shift_start_time: string;
+  shift_end_time: string;
+  expiry_calibration_version: string;
+  reading: Omit<Reading, 'id' | 'shift_id' | 'wristband_id'>;
+}
+
+/** Save wristband, shift, and reading atomically so retry cannot leave partial rows. */
+export async function saveCompletedScan(input: CompletedScanInput): Promise<Reading> {
+  const db = await getDB();
+  const wristbandId = generateId();
+  const shiftId = generateId();
+  const readingId = generateId();
+
+  await db.withExclusiveTransactionAsync(async txn => {
+    await txn.runAsync(
+      `INSERT INTO wristbands (id, batch_id, issued_at, expiry_calibration_version) VALUES (?, ?, ?, ?)`,
+      [wristbandId, input.batch_id, input.issued_at, input.expiry_calibration_version]
+    );
+    await txn.runAsync(
+      `INSERT INTO shifts (id, worker_id, start_time, end_time, wristband_id) VALUES (?, ?, ?, ?, ?)`,
+      [shiftId, input.worker_id, input.shift_start_time, input.shift_end_time, wristbandId]
+    );
+    const reading = input.reading;
+    await txn.runAsync(
+      `INSERT INTO readings (
+        id, shift_id, wristband_id, captured_at, band_valid, expiry_delta_e,
+        sensing_delta_e, cumulative_ppm_hr, twa_ppm, h2s_index, index_mode,
+        risk_band, calibration_curve_version, scan_quality, sample_count,
+        is_saturated, raw_image_path, app_version, build_version, device_model,
+        os_name, os_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        readingId, shiftId, wristbandId, reading.captured_at,
+        reading.band_valid ? 1 : 0, reading.expiry_delta_e, reading.sensing_delta_e,
+        reading.cumulative_ppm_hr, reading.twa_ppm, reading.h2s_index,
+        reading.index_mode, reading.risk_band, reading.calibration_curve_version,
+        reading.scan_quality, reading.sample_count, reading.is_saturated ? 1 : 0,
+        reading.raw_image_path ?? null, reading.app_version, reading.build_version,
+        reading.device_model, reading.os_name, reading.os_version,
+      ]
+    );
+  });
+
+  return { id: readingId, shift_id: shiftId, wristband_id: wristbandId, ...input.reading };
 }
 
 export async function getReadingsByWorker(workerId: string): Promise<Reading[]> {
@@ -270,6 +335,46 @@ export async function getAllReadings(): Promise<Reading[]> {
   return rows.map(deserializeReading);
 }
 
+export interface ReadingExportRow {
+  reading: Reading;
+  worker: Worker;
+  shift: Shift;
+}
+
+export async function getAllReadingsForExport(): Promise<ReadingExportRow[]> {
+  const db = await getDB();
+  const rows = await db.getAllAsync<any>(
+    `SELECT r.*,
+      s.id AS export_shift_id, s.worker_id AS export_worker_id,
+      s.start_time AS export_shift_start, s.end_time AS export_shift_end,
+      s.wristband_id AS export_shift_wristband_id,
+      w.id AS export_worker_record_id, w.name AS export_worker_name,
+      w.worker_code AS export_worker_code, w.site_id AS export_site_id,
+      w.created_at AS export_worker_created_at
+     FROM readings r
+     JOIN shifts s ON s.id = r.shift_id
+     JOIN workers w ON w.id = s.worker_id
+     ORDER BY r.captured_at DESC`
+  );
+  return rows.map(row => ({
+    reading: deserializeReading(row),
+    shift: {
+      id: row.export_shift_id,
+      worker_id: row.export_worker_id,
+      start_time: row.export_shift_start,
+      end_time: row.export_shift_end,
+      wristband_id: row.export_shift_wristband_id,
+    },
+    worker: {
+      id: row.export_worker_record_id,
+      name: row.export_worker_name,
+      worker_code: row.export_worker_code,
+      site_id: row.export_site_id,
+      created_at: row.export_worker_created_at,
+    },
+  }));
+}
+
 function deserializeReading(row: any): Reading {
   return {
     ...row,
@@ -277,6 +382,11 @@ function deserializeReading(row: any): Reading {
     is_saturated: row.is_saturated === 1,
     scan_quality: Number(row.scan_quality ?? 0),
     sample_count: Number(row.sample_count ?? 1),
+    app_version: String(row.app_version ?? 'unknown'),
+    build_version: String(row.build_version ?? 'unknown'),
+    device_model: String(row.device_model ?? 'unknown'),
+    os_name: String(row.os_name ?? 'unknown'),
+    os_version: String(row.os_version ?? 'unknown'),
   };
 }
 
@@ -287,6 +397,10 @@ export async function getSettings(): Promise<AppSettings> {
   const rows = await db.getAllAsync<{ key: string; value: string }>(`SELECT key, value FROM settings`);
   const map: Record<string, string> = {};
   rows.forEach(r => { map[r.key] = r.value; });
+  const calibrationVersion = map.calibration_curve_version ?? 'v2';
+  // Refuse to scan with an unknown or malformed curve instead of silently
+  // substituting a different calibration.
+  getCurve(calibrationVersion);
   return {
     // These safety values are deliberately not read from user-editable storage.
     // A colourimetric wristband is an exposure aid, not a compliance monitor.
@@ -297,12 +411,13 @@ export async function getSettings(): Promise<AppSettings> {
     risk_high_twa: INDIA_FACTORY_H2S_LIMITS.scheduleIiTwaPpm,
     risk_elevated_index: parseFloat(map.risk_elevated_index ?? '10'),
     risk_high_index: parseFloat(map.risk_high_index ?? '25'),
-    calibration_curve_version: map.calibration_curve_version ?? 'v1',
+    calibration_curve_version: calibrationVersion,
     unit: (map.unit as 'ppm_hr' | 'mg_m3_hr') ?? 'ppm_hr',
   };
 }
 
 export async function setSetting(key: keyof AppSettings, value: string): Promise<void> {
+  if (key === 'calibration_curve_version') getCurve(value);
   const db = await getDB();
   await db.runAsync(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)`, [key, value]);
 }

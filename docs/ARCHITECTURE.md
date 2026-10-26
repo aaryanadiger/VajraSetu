@@ -38,8 +38,8 @@ React Native UI
 | Capture experience | `src/screens/CaptureFlowScreen.tsx`, `src/components/CameraOverlay.tsx` | Camera permission, live alignment state, capture, retry, result view. |
 | Image logic | `src/services/imageProcessing.ts` | JPEG decode via native OpenCV, bounded card search, robust RGB sampling, Lab conversion, ΔE00. |
 | Exposure logic | `src/services/exposure.ts`, `src/services/calibration.ts` | White balance, validity check, colour classification, interpolation, TWA calculation. |
-| Persistence | `src/services/db.ts`, `src/services/csv.ts` | SQLite schema, profile/reading CRUD, cache, CSV text generation. |
-| Localisation | `src/services/translation.ts`, `src/hooks/useSarvamText.ts` | Bundled copy, Sarvam request/cache fallback, rerender subscriptions. |
+| Persistence | `src/services/db.ts`, `src/services/csv.ts`, `src/services/export.ts` | Atomic SQLite scan writes, joined CSV generation, native share sheet. |
+| Localisation | `src/services/translation.ts`, `src/hooks/useSarvamText.ts`, `server/translation-proxy.mjs` | Bundled copy, proxy-backed Sarvam fallback, local cache, rerender subscriptions. |
 | Native setup | `app.json`, `plugins/withQuotedExpoConstantsPath.js` | Camera permission, iOS 27 scene support, reproducible Xcode path fix. |
 
 ## Scan data flow
@@ -87,7 +87,7 @@ SQLite is opened as `vajra_setu.db` and uses WAL mode. The main tables are:
 | `translation_cache` | Persisted Sarvam text by source phrase and language. |
 | `app_preferences` | Selected language and future device preferences. |
 
-All data stays on the device unless a user explicitly exports CSV. Deleting the app or clearing its data removes local records; there is no backup or remote sync in the current implementation.
+All scan data stays on the device unless a user explicitly exports CSV. Translation text may be sent to the configured proxy. Deleting the app or clearing its data removes local records; there is no backup or remote sync in the current implementation.
 
 ## Language and translation behaviour
 
@@ -96,7 +96,7 @@ The selectable languages are English (`en-IN`), Bhojpuri (`bho-IN`), Hindi (`hi-
 For supported non-English languages, unbundled UI strings follow this order:
 
 ```text
-bundled phrase → memory cache → SQLite cache → Sarvam Translate → English fallback
+bundled phrase → memory cache → SQLite cache → configured translation proxy → Sarvam Translate → English fallback
 ```
 
 Bhojpuri is deliberately local-only because the implementation does not send Bhojpuri requests to Sarvam. The cache is keyed by text and target language, deduplicates concurrent requests, and warms a small set of common phrases when the language changes.
@@ -111,7 +111,7 @@ Bhojpuri is deliberately local-only because the implementation does not send Bho
 ## Important implementation boundaries
 
 - The present profile flow has no remote account, password, session expiry, or server authorisation.
-- CSV text can be generated, but the current app does not include a share/save implementation such as `expo-sharing`.
+- Settings writes the joined worker/shift/reading CSV to app documents and opens the native share sheet with `expo-sharing`; a local image path is represented only as `YES/NO` because it is not portable.
 - `getSettings()` deliberately returns fixed H₂S reference values for safety fields rather than accepting user changes.
 - The scan flow currently uses a fixed eight-hour reference period. It does not capture actual shift start/end times.
 - Calibration and expiry thresholds are provisional; see [Scanner and calibration](SCANNER_AND_CALIBRATION.md).

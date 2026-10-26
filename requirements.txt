@@ -21,9 +21,14 @@
 # npx expo run:ios
 
 # Environment variables
-# Create .env in the project root and add:
-# EXPO_PUBLIC_SARVAM_API_KEY=your_sarvam_ai_api_key
+# Optional server-only translation proxy:
+# SARVAM_API_KEY=your_sarvam_ai_api_key
+# PORT=8787
+# The app receives only this non-secret value:
+# EXPO_PUBLIC_TRANSLATION_PROXY_URL=http://YOUR_COMPUTER_LAN_IP:8787/translate
 
 # Useful verification commands
-# npx tsc --noEmit
+# npm run typecheck
+# npm test
+# npm run test:native-readiness
 # npx expo export --platform android --output-dir /tmp/vajrasetu-export

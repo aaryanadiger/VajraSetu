@@ -198,7 +198,7 @@ export async function extractRegionsFromImage(imageBase64: string): Promise<Capt
   }
 }
 
-interface DecodedImage {
+export interface DecodedImage {
   cols: number;
   rows: number;
   channels: number;
@@ -261,6 +261,11 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
     scanQuality: captureQuality(candidate.score, referenceRGB),
     sampleCount: 1,
   };
+}
+
+/** Pure decoded-image entry point used by deterministic scanner fixtures. */
+export function extractRegionsFromDecodedImage(image: DecodedImage): CaptureRegions {
+  return extractCentredIndicatorRegions(image);
 }
 
 /**

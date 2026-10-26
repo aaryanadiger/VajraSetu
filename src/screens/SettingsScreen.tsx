@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, SafeAreaView,
-  TouchableOpacity, Alert, Share, Modal, TextInput, KeyboardAvoidingView, Platform,
+  TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,11 +10,11 @@ import { useSarvamText } from '../hooks/useSarvamText';
 import { AppHeader } from '../components/ui/AppHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadings } from '../services/db';
+import { getAccountProfile, getSettings, saveAccountProfile, setSetting, getAllReadingsForExport } from '../services/db';
 import { generateCSV, getExportFilename } from '../services/csv';
+import { shareCSVFile } from '../services/export';
 import { AccountProfile, AppSettings, DEFAULT_SETTINGS, INDIA_FACTORY_H2S_LIMITS } from '../types';
 import { getCurve } from '../services/calibration';
-import * as FileSystem from 'expo-file-system/legacy';
 
 function SettingRow({
   icon, label, value, onPress, chevron = true,
@@ -88,17 +88,15 @@ export const SettingsScreen: React.FC = () => {
   async function handleExport() {
     setExporting(true);
     try {
-      const readings = await getAllReadings();
-      if (readings.length === 0) {
+      const rows = await getAllReadingsForExport();
+      if (rows.length === 0) {
         Alert.alert('No Data', 'There are no readings to export yet.');
         setExporting(false);
         return;
       }
-      const csv = generateCSV(readings.map(r => ({ reading: r })));
+      const csv = generateCSV(rows);
       const filename = getExportFilename();
-      const path = `${FileSystem.documentDirectory}${filename}`;
-      await FileSystem.writeAsStringAsync(path, csv, { encoding: FileSystem.EncodingType.UTF8 });
-      await Share.share({ url: path, message: `Vajra-Setu exposure data: ${filename}` });
+      await shareCSVFile(csv, filename);
     } catch (e) {
       Alert.alert('Export Failed', 'Could not export data. Please try again.');
     } finally {

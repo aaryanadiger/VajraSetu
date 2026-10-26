@@ -92,6 +92,12 @@ export interface Reading {
   sample_count: number;
   is_saturated: boolean;
   raw_image_path: string | null;
+  /** Native app and device context captured with the reading for reproducibility. */
+  app_version: string;
+  build_version: string;
+  device_model: string;
+  os_name: string;
+  os_version: string;
 }
 
 // ─── Enriched types for UI ───────────────────────────────────────────────────

@@ -20,22 +20,31 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { CameraOverlay } from '../components/CameraOverlay';
 import {
-  createShift,
-  createWristband,
   createWorker,
   getAccountProfile,
   getWorkerById,
   getWorkers,
   getSettings,
-  saveReading,
+  saveCompletedScan,
 } from '../services/db';
 import { CaptureError, extractRegionsFromImage, mergeCaptureRegions } from '../services/imageProcessing';
 import { runExposurePipeline } from '../services/exposure';
-import { AppSettings, ProcessingResult, RiskBand } from '../types';
+import { AppSettings, ProcessingResult, Reading, RiskBand, Shift, Worker } from '../types';
 import { AppLanguage, translateUi } from '../services/translation';
+import { getScanBuildMetadata, ScanBuildMetadata } from '../services/buildInfo';
+import { generateCSV, getExportFilename } from '../services/csv';
+import { shareCSVFile } from '../services/export';
 
 type Step = 'camera' | 'processing' | 'result' | 'unreadable';
 type AlignmentStatus = 'checking' | 'aligned' | 'adjust' | 'lighting' | 'unavailable';
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
+
+interface PendingScan {
+  result: ProcessingResult;
+  imageUri: string;
+  capturedAt: string;
+  metadata: ScanBuildMetadata;
+}
 
 const PIPELINE_STAGES = [
   'Checking the card position',
@@ -77,6 +86,9 @@ export const CaptureFlowScreen: React.FC = () => {
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [captureProblem, setCaptureProblem] = useState('');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [saveProblem, setSaveProblem] = useState('');
+  const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [alignmentStatus, setAlignmentStatus] = useState<AlignmentStatus>('checking');
   const cameraRef = useRef<CameraView>(null);
   const alignmentCheckInFlight = useRef(false);
@@ -227,41 +239,90 @@ export const CaptureFlowScreen: React.FC = () => {
       ));
     }
 
-    try {
-      const profile = await getAccountProfile();
-      const profileWorker = profile ? await getWorkerById(profile.worker_id) : null;
-      const workers = profileWorker ? [] : await getWorkers();
-      // Every scan belongs to the signed-in worker profile. The fallback keeps
-      // older installs usable until they complete their profile in Settings.
-      const worker = profileWorker ?? workers[0] ?? await createWorker({
-        name: 'Worker',
-        worker_code: 'WORKER-001',
-        site_id: 'DEFAULT_SITE',
-      });
-      const wristband = await createWristband({
-          batch_id: `BATCH-${Date.now()}`,
-          issued_at: new Date().toISOString(),
-          expiry_calibration_version: settings.calibration_curve_version,
-      });
-      const shift = await createShift({
-          worker_id: worker.id,
-          start_time: new Date(Date.now() - REFERENCE_SHIFT_HOURS * 3600000).toISOString(),
-          end_time: new Date().toISOString(),
-          wristband_id: wristband.id,
-      });
-      await saveReading({
-          shift_id: shift.id,
-          wristband_id: wristband.id,
-          captured_at: new Date().toISOString(),
-          raw_image_path: imageUri || null,
-          ...processed,
-      });
-    } catch (error) {
-      console.warn('[CaptureFlow] Could not save reading', error);
-    }
-
+    const scan: PendingScan = {
+      result: processed,
+      imageUri,
+      capturedAt: new Date().toISOString(),
+      metadata: getScanBuildMetadata(),
+    };
+    setPendingScan(scan);
     setStep('result');
     setCapturing(false);
+    void persistScan(scan);
+  }
+
+  async function resolveWorker(): Promise<Worker> {
+    const profile = await getAccountProfile();
+    const profileWorker = profile ? await getWorkerById(profile.worker_id) : null;
+    const workers = profileWorker ? [] : await getWorkers();
+    return profileWorker ?? workers[0] ?? createWorker({
+      name: 'Worker',
+      worker_code: 'WORKER-001',
+      site_id: 'DEFAULT_SITE',
+    });
+  }
+
+  async function persistScan(scan: PendingScan) {
+    if (!settings) return;
+    setSaveStatus('saving');
+    setSaveProblem('');
+    try {
+      const worker = await resolveWorker();
+      const capturedTime = new Date(scan.capturedAt).getTime();
+      await saveCompletedScan({
+        worker_id: worker.id,
+        batch_id: `BATCH-${capturedTime}`,
+        issued_at: scan.capturedAt,
+        shift_start_time: new Date(capturedTime - REFERENCE_SHIFT_HOURS * 3600000).toISOString(),
+        shift_end_time: scan.capturedAt,
+        expiry_calibration_version: scan.result.calibration_curve_version,
+        reading: {
+          captured_at: scan.capturedAt,
+          raw_image_path: scan.imageUri || null,
+          ...scan.result,
+          ...scan.metadata,
+        },
+      });
+      setSaveStatus('saved');
+    } catch (error) {
+      console.warn('[CaptureFlow] Could not save reading', error);
+      setSaveProblem('Your scan is visible, but it is not in History yet.');
+      setSaveStatus('failed');
+    }
+  }
+
+  async function exportPendingScan() {
+    if (!pendingScan) return;
+    try {
+      const worker = await resolveWorker().catch((): Worker => ({
+        id: 'UNSAVED-WORKER',
+        name: 'Worker',
+        worker_code: 'UNKNOWN',
+        site_id: 'UNKNOWN',
+        created_at: pendingScan.capturedAt,
+      }));
+      const capturedTime = new Date(pendingScan.capturedAt).getTime();
+      const temporaryId = `UNSAVED-${capturedTime}`;
+      const shift: Shift = {
+        id: temporaryId,
+        worker_id: worker.id,
+        start_time: new Date(capturedTime - REFERENCE_SHIFT_HOURS * 3600000).toISOString(),
+        end_time: pendingScan.capturedAt,
+        wristband_id: temporaryId,
+      };
+      const reading: Reading = {
+        id: temporaryId,
+        shift_id: shift.id,
+        wristband_id: temporaryId,
+        captured_at: pendingScan.capturedAt,
+        raw_image_path: pendingScan.imageUri || null,
+        ...pendingScan.result,
+        ...pendingScan.metadata,
+      };
+      await shareCSVFile(generateCSV([{ reading, worker, shift }]), getExportFilename());
+    } catch (error) {
+      setSaveProblem(error instanceof Error ? error.message : 'The result could not be exported.');
+    }
   }
 
   function reset() {
@@ -271,6 +332,9 @@ export const CaptureFlowScreen: React.FC = () => {
     setCameraReady(false);
     setCapturing(false);
     setCaptureProblem('');
+    setSaveStatus('idle');
+    setSaveProblem('');
+    setPendingScan(null);
     alignmentSuccesses.current = 0;
     alignmentFailures.current = 0;
     alignmentStatusRef.current = 'checking';
@@ -367,7 +431,18 @@ export const CaptureFlowScreen: React.FC = () => {
 
   if (!result) return null;
 
-  return <ResultStep result={result} settings={settings} language={language} onRescan={reset} onDone={() => navigation.navigate('Home')} onHistory={() => navigation.navigate('History')} />;
+  return <ResultStep
+    result={result}
+    settings={settings}
+    language={language}
+    saveStatus={saveStatus}
+    saveProblem={saveProblem}
+    onRetrySave={() => pendingScan && void persistScan(pendingScan)}
+    onExport={() => void exportPendingScan()}
+    onRescan={reset}
+    onDone={() => navigation.navigate('Home')}
+    onHistory={() => navigation.navigate('History')}
+  />;
 };
 
 const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: () => void }> = ({ message, onRescan, onDone }) => (
@@ -402,10 +477,14 @@ const ResultStep: React.FC<{
   result: ProcessingResult;
   settings: AppSettings | null;
   language: AppLanguage;
+  saveStatus: SaveStatus;
+  saveProblem: string;
+  onRetrySave: () => void;
+  onExport: () => void;
   onRescan: () => void;
   onDone: () => void;
   onHistory: () => void;
-}> = ({ result, settings, language, onRescan, onDone, onHistory }) => {
+}> = ({ result, settings, language, saveStatus, saveProblem, onRetrySave, onExport, onRescan, onDone, onHistory }) => {
   const sarvamText = useSarvamText();
   const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
     const local = translateUi(key, language, fallback);
@@ -423,7 +502,9 @@ const ResultStep: React.FC<{
             <Text style={styles.detailText}>{tx('newBand', 'Use a new wristband and scan again.')} {tx('tellSupervisor', 'If this keeps happening, tell your supervisor.')}</Text>
             <Text style={styles.detailSub}>Expiry ΔE: {result.expiry_delta_e.toFixed(2)}</Text>
             <Text style={styles.detailSub}>Image quality: {Math.round(result.scan_quality * 100)}% · {result.sample_count} frames</Text>
+            <Text style={styles.detailSub}>Calibration: {result.calibration_curve_version}</Text>
           </Card>
+          <SaveState status={saveStatus} problem={saveProblem} onRetry={onRetrySave} onExport={onExport} />
           <Button label={tx('rescan', 'Scan another wristband')} onPress={onRescan} style={styles.fullButton} />
           <Button label={tx('done', 'Done')} variant="outline" onPress={onDone} style={styles.fullButton} />
         </ScrollView>
@@ -455,8 +536,11 @@ const ResultStep: React.FC<{
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('8-hour equivalent')}</Text><Text style={styles.detailValue}>{result.is_saturated ? '≥' : ''}{result.twa_ppm.toFixed(2)} ppm TWA</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{tx('referenceLimit', 'India TWA limit')}</Text><Text style={styles.detailValue}>{oel} ppm</Text></View>
           <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('Image quality')}</Text><Text style={styles.detailValue}>{Math.round(result.scan_quality * 100)}%</Text></View>
+          <View style={styles.detailRow}><Text style={styles.detailLabel}>{sarvamText('Calibration')}</Text><Text style={styles.detailValue}>{result.calibration_curve_version}</Text></View>
           {result.is_saturated && <Text style={styles.detailSub}>The sensing patch is beyond the measured 0–15 ppm·hr range. The actual exposure may be much higher; do not compare this minimum value with the 80 ppm·hr full-shift reference.</Text>}
         </Card>
+
+        <SaveState status={saveStatus} problem={saveProblem} onRetry={onRetrySave} onExport={onExport} />
 
         <Button label={tx('done', 'Done')} onPress={onDone} style={styles.fullButton} />
         <View style={styles.secondaryActions}>
@@ -465,6 +549,29 @@ const ResultStep: React.FC<{
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+};
+
+const SaveState: React.FC<{
+  status: SaveStatus;
+  problem: string;
+  onRetry: () => void;
+  onExport: () => void;
+}> = ({ status, problem, onRetry, onExport }) => {
+  const t = useSarvamText();
+  if (status === 'idle' || status === 'saved') return null;
+  if (status === 'saving') {
+    return <View style={styles.savingState}><ActivityIndicator size="small" color={theme.colors.primary} /><Text style={styles.savingText}>{t('Saving result…')}</Text></View>;
+  }
+  return (
+    <View style={styles.saveError} accessibilityRole="alert">
+      <View style={styles.saveErrorHeading}><Ionicons name="cloud-offline-outline" size={20} color={theme.colors.semantic.danger} /><Text style={styles.saveErrorTitle}>{t('Result not saved')}</Text></View>
+      <Text style={styles.saveErrorBody}>{t(problem || 'The result could not be saved on this phone.')}</Text>
+      <View style={styles.saveErrorActions}>
+        <TouchableOpacity style={styles.saveErrorButton} onPress={onRetry}><Text style={styles.saveErrorButtonText}>{t('Retry saving')}</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.saveErrorButton} onPress={onExport}><Text style={styles.saveErrorButtonText}>{t('Export result')}</Text></TouchableOpacity>
+      </View>
+    </View>
   );
 };
 
@@ -539,4 +646,13 @@ const styles = StyleSheet.create({
   secondaryActions: { flexDirection: 'row', width: '100%', gap: theme.spacing.md, marginTop: theme.spacing.sm },
   secondaryAction: { flex: 1, minHeight: 48, borderRadius: 16, backgroundColor: '#ffffffAA', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: theme.spacing.sm },
   secondaryActionText: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.primary },
+  savingState: { width: '100%', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.lg },
+  savingText: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary },
+  saveError: { width: '100%', padding: theme.spacing.md, borderRadius: 16, backgroundColor: '#FDECEC', borderWidth: 1, borderColor: '#F3B8B5', marginBottom: theme.spacing.lg },
+  saveErrorHeading: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  saveErrorTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, color: theme.colors.semantic.danger },
+  saveErrorBody: { fontFamily: theme.typography.family.main, fontSize: 12, lineHeight: 17, color: theme.colors.text.secondary, marginTop: theme.spacing.xs },
+  saveErrorActions: { flexDirection: 'row', gap: theme.spacing.sm, marginTop: theme.spacing.md },
+  saveErrorButton: { flex: 1, minHeight: 40, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.semantic.danger, alignItems: 'center', justifyContent: 'center' },
+  saveErrorButtonText: { fontFamily: theme.typography.family.semiBold, fontSize: 12, color: theme.colors.semantic.danger },
 });

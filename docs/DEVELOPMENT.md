@@ -111,20 +111,24 @@ If Expo reports that it cannot resolve the Android SDK path or cannot find `adb`
 
 ## Configuration and secrets
 
-Create a local `.env` only if remote fallback translation is needed:
+The app must never contain the Sarvam secret. For optional remote fallback translation, run the local proxy with a server-only key and give the app only its URL:
 
 ```dotenv
-EXPO_PUBLIC_SARVAM_API_KEY=your_sarvam_api_key
+SARVAM_API_KEY=your_sarvam_api_key
+PORT=8787
+EXPO_PUBLIC_TRANSLATION_PROXY_URL=http://YOUR_COMPUTER_LAN_IP:8787/translate
 ```
 
-`.env` is ignored by git. `EXPO_PUBLIC_*` environment values are bundled into the client and can be recovered from an app build. Use a short-lived restricted key only for local prototyping; production translation must use an authenticated backend/proxy with rate limits, usage monitoring, and secret storage.
+Start the proxy with `npm run translation-proxy`. `.env` is ignored by git, but every `EXPO_PUBLIC_*` value is recoverable from the app build; only the non-secret proxy URL may use that prefix. Production translation needs authentication, durable rate limits, monitoring, and managed secret storage.
 
 ## Checks before sharing a build
 
 Run these from the repository root:
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
+npm test
+npm run test:native-readiness
 npx expo export --platform ios --output-dir /tmp/vajrasetu-ios-export
 npx expo export --platform android --output-dir /tmp/vajrasetu-android-export
 ```
@@ -144,8 +148,8 @@ The export check validates JavaScript bundling. It does not prove camera or nati
 
 - Switch through English, Bhojpuri, Hindi, Marathi, and Kannada.
 - Confirm labels and safety guidance stay readable in airplane mode.
-- With the Sarvam key present, switch to Hindi/Marathi/Kannada and return to a page to confirm cached text appears without repeated waits.
-- Confirm a missing/bad key falls back to bundled English rather than blocking the page.
+- With the translation proxy running, switch to Hindi/Marathi/Kannada and return to a page to confirm cached text appears without repeated waits.
+- Confirm a missing/bad proxy URL falls back to bundled English rather than blocking the page.
 
 ### Scanner
 
@@ -157,13 +161,17 @@ The export check validates JavaScript bundling. It does not prove camera or nati
 - A valid-looking test card reaches a result and History records it.
 - An invalid/aged test control reaches the replacement flow.
 - Expo Go displays the development-build requirement rather than a simulated result.
+- Force-close and reopen the app; camera permission, scanner startup, and saved History still work.
+- Repeat permission denial/grant and torch on/off after restart on both target platforms.
 
 ### Data
 
 - Relaunch the app and confirm profile/history remain.
 - Confirm a new scan appears in History with a timestamp and risk label.
 - With no readings, export shows the “No Data” message.
-- Record that CSV generation is present but device sharing/saving is not implemented yet.
+- Export CSV, open the shared file, and confirm worker/site, shift, calibration, app/build, device/OS, and scan fields are present.
+- Confirm the CSV contains only `Image Stored Locally=YES/NO`, not a device-local file path.
+- Simulate a database write failure and confirm the result shows **Result not saved**, then test both retry and one-result export.
 
 ## Troubleshooting table
 
@@ -177,6 +185,17 @@ The export check validates JavaScript bundling. It does not prove camera or nati
 | Android cannot find `adb` | Platform-tools missing from PATH. | Install Platform-Tools, configure `ANDROID_HOME` and PATH, then reopen the terminal. |
 | Card never aligns | Card is outside guide, tilted, incomplete, or lighting is poor. | Centre only the card, reduce glare, use diffuse light, and hold steady. |
 
-## Test strategy gap
+## Native target-device evidence
 
-There is no automated test suite in the repository yet. Before changing scanner or safety logic, add unit tests for colour conversion, ΔE00 reference vectors, calibration interpolation, validity thresholds, risk/category boundaries, and translation caching. Add device-level manual test evidence for every supported phone model and calibration version.
+Automated tests cannot load the native camera/OpenCV bridge. For every release candidate, record one row per device/build in the project test log:
+
+| Platform | Required checks |
+| --- | --- |
+| Physical iPhone | Fresh install, camera deny/grant, live alignment, 3-frame scan, torch, valid/invalid controls, save/history, force-close/restart. |
+| Physical Android target | Same checks, plus back gesture, permission recovery from system Settings, and torch behaviour on the target camera. |
+
+Record app/build version, calibration version, device model, OS, result, and tester timestamp. Expo Go and web results do not count as scanner evidence. `npm run test:native-readiness` checks configuration only; it does not replace these device runs.
+
+## Automated test coverage
+
+`npm test` runs deterministic tests for card-region extraction from representative pixel fixtures, low-light rejection, three-frame consistency, expiry validation, colour categories, dose interpolation, saturation, immutable/invalid calibration curves, and complete CSV contents. Add a regression fixture whenever a real target-device image fails unexpectedly.

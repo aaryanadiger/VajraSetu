@@ -66,11 +66,11 @@ Before handing a phone to another person, repairing it, or uninstalling the app:
 2. Export or record the required data using an approved workflow.
 3. Remember that uninstalling the app or clearing device data can remove locally stored records.
 
-The CSV service currently generates CSV text. The app does not yet implement a secure share/save workflow, encrypted backup, role-based access, or remote audit trail.
+Settings can generate a joined CSV and open the native share sheet. The export includes worker, shift, calibration, app/build, device/OS, and scan fields. It reports whether an image exists locally but never exports the device-local path as an attachment. The app still has no encrypted backup, role-based access, remote audit trail, or guaranteed destination security; the worker controls the native share destination.
 
 ## Translation behaviour
 
-Critical short phrases are bundled with the app for the supported languages. Hindi, Marathi, and Kannada may request Sarvam translation for less-common UI text when a network/API key is configured; those results are cached on-device. Bhojpuri follows the bundled/offline phrase path.
+Critical short phrases are bundled with the app for the supported languages. Hindi, Marathi, and Kannada may request Sarvam translation for less-common UI text through the configured backend proxy; those results are cached on-device. The client contains no Sarvam key. Bhojpuri follows the bundled/offline phrase path.
 
 For safety-critical messages, English fallback is preferable to a missing or uncertain translation. Validate all worker-facing terms with native-speaking users from the intended worksite before release.
 
