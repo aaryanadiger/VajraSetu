@@ -25,6 +25,11 @@ Open the repository's **Actions → Build iPhone IPA** workflow. Select the
 branch containing this workflow, then **Run workflow**. The setup branch
 `codex/iphone-cloud-build` also builds when pushed.
 
+Until the workflow has been merged into the default branch, GitHub may hide
+the manual run button. Open the existing push-triggered run and use **Re-run
+all jobs**, or push an update to the setup branch. Merging the workflow into
+`main` makes the manual button available for future builds.
+
 When the run succeeds, download the `VajraSetu-iPhone-<commit>` artifact and
 extract it on Windows. It contains:
 
@@ -94,13 +99,15 @@ export PATH="$HOME/.local/bin:$PATH"
 xtool --help
 xtool auth --help
 xtool auth login --help
-xtool auth login
+xtool auth login --mode password
 ```
 
 Choose **Password** authentication for a free account and complete Apple's
 2FA locally. Do not paste passwords, 2FA codes, or account tokens into the chat
 or GitHub. xtool documents that password login uses private Apple APIs, so
 Apple-side changes can affect it.
+If xtool reports that no development team exists, sign into the Apple
+Developer website with that account and accept its developer agreement first.
 
 This route uses `xtool install`, not `xtool dev`. The Swift compiler and
 Xcode.xip SDK extraction are needed for xtool's Swift compilation workflow;
