@@ -25,6 +25,7 @@ It is designed to be simple in a factory setting: one device belongs to one work
 | [Architecture](docs/ARCHITECTURE.md) | App structure, navigation, data model, and processing flow. |
 | [Scanner and calibration](docs/SCANNER_AND_CALIBRATION.md) | How scanning works without ML, test protocol, calibration requirements, and limits. |
 | [Development guide](docs/DEVELOPMENT.md) | First-time setup, native builds, device testing, troubleshooting, and verification. |
+| [iPhone from Windows](docs/IPHONE_FROM_WINDOWS.md) | Cloud Xcode build and free-account installation with xtool over WSL/USB. |
 | [Safety and operating guide](docs/OPERATIONS_AND_SAFETY.md) | Worker workflow, interpretation boundary, data handling, and production readiness checklist. |
 
 ## Quick start

@@ -44,6 +44,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+/build/
+*.ipa
 
 # ── Vajra-Setu specific ──────────────────────────────────────────────
 # Raw captured wristband images (stored locally on device, never committed)
