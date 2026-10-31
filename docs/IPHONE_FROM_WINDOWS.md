@@ -76,7 +76,7 @@ In **Ubuntu**:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y usbmuxd libimobiledevice-utils curl ca-certificates libfuse2
+sudo apt-get install -y usbmuxd libimobiledevice-utils curl ca-certificates libfuse2 unzip zip
 sudo service usbmuxd start
 idevicepair pair
 ideviceinfo -k DeviceName
@@ -86,6 +86,10 @@ Tap **Trust** on the phone and enter its passcode when prompted; rerun pairing
 if needed. Some Ubuntu versions call the FUSE package `libfuse2t64`; use that
 name if `libfuse2` is unavailable. If USB pairing fails, consult xtool's
 documented Windows/iTunes relay workaround linked in its installation guide.
+
+Keep an Ubuntu terminal open during attachment and installation. WSL can shut
+down when no interactive command remains, dropping the USB attachment even
+when a Linux service was running.
 
 ## 3. Install xtool and authenticate locally
 
@@ -165,3 +169,38 @@ usbipd detach --busid <IPHONE-BUSID>
 - [xtool integrated signing/installation](https://github.com/xtool-org/xtool/blob/main/Sources/XKit/Integration/IntegratedInstaller.swift)
 - [Microsoft WSL USB setup](https://learn.microsoft.com/en-us/windows/wsl/connect-usb)
 - [Apple Personal Team limits](https://developer.apple.com/support/compare-memberships/)
+
+## Verified installation on this Windows PC — 31 October 2026
+
+The cloud-built IPA was successfully signed, installed, and verified by
+xtool 1.24.0 on the connected iPhone, which reported iOS 27.2. Ubuntu 26.04
+and the native tools were installed through WSL. Apple login was completed
+interactively in a Windows Terminal using the Ubuntu `root` account.
+Physical app launch and scanner operation still require confirmation on the
+phone; an installation success does not establish those results.
+
+Direct USBIPD attachment paired successfully but stalled at `[Connecting]`.
+Linux usbmuxd logged a device message exceeding its maximum packet size.
+The working route uses Apple's **Windows** Mobile Device Service instead:
+
+1. Keep the phone connected to Windows, with USBIPD detached.
+2. Run Apple Mobile Device Service. Its standalone, Apple-signed
+   `AppleMobileDeviceSupport64.msi` was extracted from Apple's iTunes
+   installer and installed separately because the initial iTunes install
+   did not install that component.
+3. Relay TCP port 27015 from the Windows WSL interface to
+   `127.0.0.1:27015`. The firewall rule `VajraSetu-WSL-AppleUSB` permits only
+   the WSL interface/subnet. At setup time the gateway was `172.20.0.1`
+   and the subnet was `172.20.0.0/20`.
+4. In **Windows PowerShell**, use the same Ubuntu account and relay for
+   subsequent signing refreshes:
+
+   ```powershell
+   wsl -d Ubuntu -u root --exec env USBMUXD_SOCKET_ADDRESS=172.20.0.1:27015 xtool install --usb /mnt/c/Users/Aarya/Documents/ChatGPT/vajrasetu/build/VajraSetu-unsigned.ipa
+   ```
+
+WSL's gateway can change after a restart. Check it with
+`wsl -d Ubuntu -u root --exec ip route show default` before reusing this
+command; if changed, update the Windows relay and its scoped firewall rule
+as well. Do not attach the phone to USBIPD while using the Windows relay.
+The relay follows [xtool's documented Windows workaround](https://github.com/xtool-org/xtool/issues/19#issuecomment-2898986718).
