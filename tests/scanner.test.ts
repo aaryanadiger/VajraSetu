@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   CaptureError,
   CaptureRegions,
@@ -7,6 +8,57 @@ import {
   mergeCaptureRegions,
 } from '../src/services/imageProcessing';
 import { freshBandImage, lowLightBandImage, makeScannerSample } from './fixtures/scannerSamples';
+
+function photo(name: string, cols: number) {
+  return { cols, rows: 400, channels: 3,
+    buffer: new Uint8Array(readFileSync(new URL(`./fixtures/${name}.bgr`, import.meta.url))) };
+}
+
+function rotate(image: ReturnType<typeof photo>) {
+  const buffer = new Uint8Array(image.buffer.length);
+  for (let y = 0; y < image.rows; y++) for (let x = 0; x < image.cols; x++) {
+    const from = (y * image.cols + x) * 3;
+    const to = (x * image.rows + image.rows - 1 - y) * 3;
+    buffer.set(image.buffer.subarray(from, from + 3), to);
+  }
+  return { cols: image.rows, rows: image.cols, channels: 3, buffer };
+}
+
+test('reads the actual middle band photo rather than mixing neighbouring bands', () => {
+  let image = photo('physical-bands', 300);
+  for (let turn = 0; turn < 4; turn++) {
+    const regions = extractRegionsFromDecodedImage(image);
+    near(regions.sensingRGB.g, 164, 12);
+    near(regions.expiryRGB.r, 167, 12);
+    assert.ok(regions.expiryRGB.r > regions.expiryRGB.b * 2);
+    assert.ok(regions.referenceRGB.g > 190);
+    image = rotate(image);
+  }
+});
+
+test('the reported empty camera screenshot cannot trigger a scan or lighting warning', () => {
+  assert.throws(() => extractRegionsFromDecodedImage(photo('camera-background', 184)),
+    (error: unknown) => error instanceof CaptureError && error.problem === 'card_not_in_frame');
+});
+
+for (const [name, left, top, width, height] of [
+  ['left', 90, 210, 35, 130], ['middle', 130, 205, 35, 125], ['right', 182, 155, 50, 115],
+] as const) {
+  test(`recognises the ${name} physical band alone at close range`, () => {
+    const original = photo('physical-bands', 300);
+    const scale = Math.ceil(180 / Math.min(width, height));
+    const cols = width * scale, rows = height * scale;
+    const buffer = new Uint8Array(cols * rows * 3);
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const from = ((top + Math.floor(y / scale)) * original.cols + left + Math.floor(x / scale)) * 3;
+      buffer.set(original.buffer.subarray(from, from + 3), (y * cols + x) * 3);
+    }
+    const result = extractRegionsFromDecodedImage({ cols, rows, channels: 3, buffer });
+    assert.ok(result.sensingRGB.g > result.sensingRGB.r);
+    assert.ok(result.expiryRGB.r > result.expiryRGB.b * 2);
+    assert.ok(result.scanQuality >= 0.5);
+  });
+}
 
 function near(actual: number, expected: number, tolerance = 8) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be within ${tolerance} of ${expected}`);

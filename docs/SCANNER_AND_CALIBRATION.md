@@ -8,60 +8,19 @@ Treat the current app output as one of three **colour categories**—low, elevat
 
 Never create, release, or expose people to H₂S to test the app. Use certified calibration gas and an approved laboratory or EHS facility.
 
-## Physical card expected by the app
+## Physical band and automatic capture
 
-The scanner expects a small indicator card with a repeatable orientation:
+The scanner uses the separate CuSO₄ sensing pad, FeSO₄ yellow/brown dot and elongated printed blue/brown reference scale shown in the supplied physical-band photo. It no longer assumes a square card or fixed relative positions. The detector groups connected colour regions, checks shapes and spacing, and uses the scale's principal axis to handle rotation. Neighbouring blue/brown scale sections can be joined across a desaturated gap. Pair proximity discourages mixing indicators from different bands.
 
-```text
-upper-left     CuSO₄ sensing patch (blue/green → brown → black)
-centre-right   FeSO₄ expiry dot
-upper-right    light/neutral printed reference area
-```
+The neutral band backing beside the printed scale supplies lighting normalisation; coloured swatches are required for recognition and are not treated as white. The detector is a deterministic prototype, not a trained or clinically validated classifier. Unsupported layouts, missing scales and unrecognised expired-dot colours may remain unreadable. A photograph establishes recognition coverage for those examples only, not chemical calibration accuracy.
 
-The scanner searches multiple positions and sizes across the image and samples these regions relative to each candidate card. No on-screen registration marks are required. The physical layout and upright orientation are still required; arbitrary rotation and perspective are not corrected. The neutral patch on the printed colour reference scale supplies lighting correction; the app does not decode every swatch. Keep the card flat, complete, clean, dry, and fully inside the camera frame. Do not use the reactive areas themselves as registration marks.
+The camera scans automatically after three consistent observations held for at least 900 ms. It checks colour, quality, position, size and orientation, then captures three final JPEGs. Changed geometry or inconsistent colours reject the final burst. A recoverable failure retries automatically; after two failed bursts an explicit retry action appears. Normal scans have no shutter button. Leaving the camera or backgrounding the app cancels stale observations and prevents saving an interrupted scan.
 
-### Recommended production-card change
+Preview photographs use a supported size near 1280 pixels and JPEG quality 0.45 to preserve the small indicators. The camera samples again after a 500 ms pause. Zoom/torch changes reset the hold. Camera JPEGs and processing stay on the phone. Expo Go has no native OpenCV decoder and cannot return a scan.
 
-Print four small, non-reactive, high-contrast registration marks or a code around the card. This enables the next scanner version to find a quadrilateral, correct perspective, and sample the exact physical locations even when the band is tilted. It also makes card/batch identification possible.
+Lighting advice is only shown after the strip/dot/scale arrangement has been recognised. An empty or unrelated scene stays in the looking-for-band state. The lens-cleaning tip is a suggestion after repeated failures, not a claim that dirt was detected.
 
-## What happens during a scan
-
-1. The user grants camera access and shows the CuSO₄ strip, FeSO₄ dot and reference scale together. Zoom and torch controls help with framing and lighting.
-2. The app samples small preview JPEGs roughly every 1.25 seconds.
-3. A candidate card must show a plausible neutral reference plus distinct sensing and expiry areas. Two consecutive successful samples show **Ready to scan**.
-4. On tap, three higher-quality JPEGs are captured while the user holds steady.
-5. `react-native-fast-opencv` decodes each JPEG. Deterministic TypeScript searches and samples each frame independently.
-6. The app rejects the scan if cross-frame CIEDE2000 differences indicate movement or changing light. Otherwise it uses median RGB values to reduce camera noise.
-7. The white reference normalises colour shifts caused by warm/cool lighting. The app then computes CIEDE2000 ΔE from the v2 fresh references measured from the supplied photographs.
-8. FeSO₄ must be both close to the measured fresh reference and remain in the expected yellow colour family. The CuSO₄ patch produces a colour category and limited-range ppm·hr estimate.
-9. The result, image-quality score, sample count, saturation state, linked wristband/worker/shift, app/build version, calibration version, device model, OS, and timestamp are saved atomically to local SQLite.
-10. If that transaction fails, the result remains visible with **Result not saved** and offers **Retry saving** or a one-result CSV export. A failed write is never presented as saved history.
-
-## Recognition checks and user feedback
-
-| App feedback | Meaning | Operator action |
-| --- | --- | --- |
-| `Checking card position…` | Preview is being sampled. | Hold still briefly. |
-| `Ready to scan` | Two successive samples passed card and lighting checks. | Capture the image. |
-| `Bring the card into view` | Card layout was not recognised. | Keep the full card upright; move closer or zoom. |
-| `More light needed` | Reference is too dark. | Turn on the light or move to a brighter spot. |
-| `Reduce the glare` | Reference is clipped. | Turn off the light or tilt the phone slightly. |
-| `Still looking for the indicators` | Repeated recognition failures. | Check framing; if the image looks hazy, clean the lens. This is a suggestion, not detection of dirt. |
-| `Use even light` | Reference is too dark, bright, or coloured. | Move away from glare/shadow; use diffuse light. |
-| `Open the development build to scan` | Native image module is unavailable, usually Expo Go. | Install/run the iOS or Android development build. |
-| `Replace the wristband` | Expiry gate failed. | Do not use the exposure result; use a new band and rescan. |
-
-## Image-processing details
-
-The image pipeline in `src/services/imageProcessing.ts` uses:
-
-- sRGB → linear RGB → CIE XYZ (D65) → CIELAB conversion.
-- CIEDE2000 (ΔE00) for perceptual colour difference.
-- Bounded scale/offset card search, so surrounding skin, clothing, and work surfaces are less likely to be sampled.
-- A trimmed mean over each region to discard colour outliers from highlights and edges.
-- Light/reference checks before extracting the result.
-
-The implementation intentionally has no ML classifier or dataset dependency. A data set becomes useful later for validating thresholds, device robustness, and a future card detector—not for replacing the known-layout sampling logic.
+Regression coverage includes downsampled BGR copies of the user's physical-band photo and reported empty-camera screenshot, all three physical bands cropped individually, four right-angle rotations, synthetic strip/dot/scale images, movement and colour instability, exposure calibration and CSV export. Physical live-camera testing remains necessary after each iPhone install.
 
 ## Current colour and exposure rules
 

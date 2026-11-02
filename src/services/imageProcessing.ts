@@ -2,11 +2,13 @@
  * Image processing service — CIELAB conversion and ΔE00 (CIEDE2000) math.
  *
  * Pure TypeScript — no OpenCV required for the color math itself.
- * OpenCV is only used for perspective correction and region sampling,
- * which is wrapped in a graceful demo-mode fallback for Expo Go.
+ * OpenCV decodes camera JPEGs; detection and sampling run locally.
+ * Expo Go cannot load that native decoder and never returns simulated readings.
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+import { detectPhysicalBand } from './bandDetection';
 
 export interface RGB { r: number; g: number; b: number }
 export interface LAB { L: number; a: number; b: number }
@@ -22,6 +24,8 @@ export interface CaptureRegions {
   scanQuality: number;
   /** Number of camera frames consolidated into this sample. */
   sampleCount: number;
+  /** Normalised geometry used to ensure automatic capture follows one band. */
+  detection?: { x: number; y: number; size: number; rotation: number };
 }
 
 export type CaptureProblem =
@@ -207,46 +211,14 @@ export interface DecodedImage {
   buffer: Uint8Array;
 }
 
-interface RelativeRegion {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  circle?: boolean;
-}
-
-// These zones describe the physical card, independently of preview dimensions.
-// The CuSO4 pad sits upper-left, the
-// FeSO4 dot sits toward the centre-right, and plain white card is sampled
-// upper-right.
-const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
-  reference: { x: 0.55, y: 0.08, width: 0.26, height: 0.17 },
-  expiry: { x: 0.53, y: 0.38, width: 0.28, height: 0.30, circle: true },
-  sensing: { x: 0.14, y: 0.17, width: 0.28, height: 0.29 },
-};
-
-interface CardBounds {
-  left: number;
-  top: number;
-  side: number;
-}
-
-interface CardCandidate {
-  bounds: CardBounds;
-  score: number;
-}
-
 function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
   if (image.channels < 3 || image.cols < 180 || image.rows < 180) {
     throw new CaptureError('card_not_in_frame', 'Move closer so the CuSO₄ strip, FeSO₄ dot and reference scale are visible.');
   }
 
-  const candidate = findIndicatorCard(image);
-  const card = candidate.bounds;
-
-  const referenceRGB = sampleRegion(image, card, INDICATOR_ZONES.reference);
-  const expiryRGB = sampleRegion(image, card, INDICATOR_ZONES.expiry);
-  const sensingRGB = sampleRegion(image, card, INDICATOR_ZONES.sensing);
+  const band = detectPhysicalBand(image);
+  if (!band) throw new CaptureError('card_not_in_frame', 'Show one complete band with the strip, dot and printed reference scale visible.');
+  const { referenceRGB, expiryRGB, sensingRGB } = band;
 
   const referenceBrightness = rgbBrightness(referenceRGB);
   if (referenceBrightness < 110) {
@@ -266,8 +238,9 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
     referenceRGB,
     expiryRGB,
     sensingRGB,
-    scanQuality: captureQuality(candidate.score, referenceRGB),
+    scanQuality: band.scanQuality,
     sampleCount: 1,
+    detection: band.detection,
   };
 }
 
@@ -284,6 +257,14 @@ export function extractRegionsFromDecodedImage(image: DecodedImage): CaptureRegi
 export function mergeCaptureRegions(frames: CaptureRegions[]): CaptureRegions {
   if (frames.length < 2) {
     throw new CaptureError('unstable_capture', 'Keep the phone steady while the app checks the card.');
+  }
+  const first = frames[0].detection;
+  if (first && frames.some(frame => frame.detection && (
+    Math.hypot(frame.detection.x - first.x, frame.detection.y - first.y) > 0.06
+    || Math.abs(frame.detection.size - first.size) > 0.08
+    || Math.abs(((frame.detection.rotation - first.rotation + 540) % 360) - 180) > 20
+  ))) {
+    throw new CaptureError('unstable_capture', 'The band moved. Hold one band steady and we’ll try again.');
   }
 
   const merged = {
@@ -316,101 +297,6 @@ export function mergeCaptureRegions(frames: CaptureRegions[]): CaptureRegions {
   return { ...merged, scanQuality, sampleCount: frames.length };
 }
 
-/**
- * Searches for the physical card across the captured image without a UI guide.
- * This is intentionally bounded: it is fast enough for an on-device preview
- * and avoids accidentally sampling the worker's hand or the surrounding work
- * surface. Rotation/perspective correction is the next physical-card upgrade:
- * print non-reactive corner markers, then rectify their quadrilateral.
- */
-function findIndicatorCard(image: DecodedImage): CardCandidate {
-  const centreSide = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
-  const centreLeft = (image.cols - centreSide) / 2;
-  const centreTop = (image.rows - centreSide) / 2;
-  const scales = [1, 0.9, 1.12, 0.78, 1.24, 0.62, 0.5, 1.45, 1.7];
-  const offsets = [0, -0.1, 0.1, -0.2, 0.2, -0.35, 0.35, -0.5, 0.5, -0.7, 0.7, -0.9, 0.9];
-  let best: CardCandidate | undefined;
-
-  function consider(bounds: CardBounds) {
-    if (!isInsideImage(bounds, image)) return;
-    const reference = sampleRegion(image, bounds, INDICATOR_ZONES.reference, 8);
-    const expiry = sampleRegion(image, bounds, INDICATOR_ZONES.expiry, 8);
-    const sensing = sampleRegion(image, bounds, INDICATOR_ZONES.sensing, 8);
-    // A shifted box can mix a pad with the dark background and appear to
-    // have stronger colour contrast. Compare its inner and outer samples
-    // so that this accidental contrast does not win the search.
-    const inset = (region: RelativeRegion): RelativeRegion => ({
-      ...region, x: region.x + region.width * 0.25,
-      y: region.y + region.height * 0.25,
-      width: region.width * 0.5, height: region.height * 0.5,
-    });
-    const consistencyPenalty = (
-      channelDistance(reference, sampleRegion(image, bounds, inset(INDICATOR_ZONES.reference), 5))
-      + channelDistance(expiry, sampleRegion(image, bounds, inset(INDICATOR_ZONES.expiry), 5))
-      + channelDistance(sensing, sampleRegion(image, bounds, inset(INDICATOR_ZONES.sensing), 5))
-    ) / 70;
-    // The full card must be present, not just three coincidental colours.
-    // Check neutral card margins so background cannot masquerade as a
-    // darkened sensing strip when the search moves off centre.
-    const marginPenalty = [
-      { x: 0.03, y: 0.03 }, { x: 0.88, y: 0.03 },
-      { x: 0.03, y: 0.88 }, { x: 0.88, y: 0.88 },
-    ].reduce((penalty, position) => {
-      const margin = sampleRegion(image, bounds, { ...position, width: 0.07, height: 0.07 }, 3);
-      return penalty + Math.max(0, channelDistance(margin, reference) - 100) / 150;
-    }, 0);
-    const score = scoreCardCandidate(reference, expiry, sensing) - consistencyPenalty - marginPenalty;
-    if (!best || score > best.score) best = { bounds, score };
-  }
-
-  for (const scale of scales) {
-    const side = Math.round(centreSide * scale);
-    for (const horizontalOffset of offsets) {
-      for (const verticalOffset of offsets) {
-        const bounds = {
-          left: Math.round(centreLeft + horizontalOffset * centreSide),
-          top: Math.round(centreTop + verticalOffset * centreSide),
-          side,
-        };
-        if (!isInsideImage(bounds, image)) continue;
-
-        consider(bounds);
-      }
-    }
-  }
-
-  // Refine the winning coarse position to sample patch interiors rather than
-  // accepting a partial overlap at the nearest search-grid location.
-  if (best) {
-    const coarse = best.bounds;
-    for (const sizeFactor of [0.9, 0.95, 1, 1.05, 1.1]) {
-      for (const dx of [-0.06, -0.03, 0, 0.03, 0.06]) {
-        for (const dy of [-0.06, -0.03, 0, 0.03, 0.06]) {
-          consider({ left: Math.round(coarse.left + dx * coarse.side),
-            top: Math.round(coarse.top + dy * coarse.side),
-            side: Math.round(coarse.side * sizeFactor) });
-        }
-      }
-    }
-  }
-
-  if (!best || best.score < 2.25) {
-    throw new CaptureError(
-      'card_not_in_frame',
-      'Move closer or zoom in. Keep the CuSO₄ strip, FeSO₄ dot and reference scale visible together.'
-    );
-  }
-
-  return best;
-}
-
-function captureQuality(cardScore: number, reference: RGB): number {
-  const geometryQuality = clamp((cardScore - 2.25) / 1.5, 0, 1);
-  const brightnessQuality = clamp(1 - Math.abs(rgbBrightness(reference) - 205) / 100, 0, 1);
-  const neutralityQuality = clamp(1 - rgbChroma(reference) / 70, 0, 1);
-  return clamp(geometryQuality * 0.55 + brightnessQuality * 0.2 + neutralityQuality * 0.25, 0, 1);
-}
-
 function medianRGB(values: RGB[]): RGB {
   return {
     r: median(values.map(value => value.r)),
@@ -425,66 +311,6 @@ function median(values: number[]): number {
   return sorted.length % 2 === 0
     ? (sorted[middle - 1] + sorted[middle]) / 2
     : sorted[middle];
-}
-
-function isInsideImage(card: CardBounds, image: DecodedImage): boolean {
-  return card.left >= 0 && card.top >= 0 && card.left + card.side <= image.cols && card.top + card.side <= image.rows;
-}
-
-function scoreCardCandidate(reference: RGB, expiry: RGB, sensing: RGB): number {
-  const referenceBrightness = rgbBrightness(reference);
-  const brightnessScore = Math.max(0, 1 - Math.abs(referenceBrightness - 210) / 120);
-  const neutralReferenceScore = Math.max(0, 1 - rgbChroma(reference) / 80);
-  const expiryDifference = Math.min(1, channelDistance(expiry, reference) / 70);
-  const sensingDifference = Math.min(1, channelDistance(sensing, reference) / 70);
-  const yellowFamily = clamp(
-    ((expiry.r - expiry.b) + (expiry.g - expiry.b)) / 110,
-    0,
-    1
-  );
-
-  // The white reference is the strongest geometry signal. Both chemical pads
-  // must differ from it; they may be blue, brown, yellow, or black as they age.
-  return brightnessScore * 0.8
-    + neutralReferenceScore * 1.2
-    + expiryDifference * 0.7
-    + sensingDifference
-    + yellowFamily * 0.55;
-}
-
-function sampleRegion(image: DecodedImage, card: CardBounds, region: RelativeRegion, gridSize = 24): RGB {
-  const left = card.left + Math.round(region.x * card.side);
-  const top = card.top + Math.round(region.y * card.side);
-  const width = Math.max(8, Math.round(region.width * card.side));
-  const height = Math.max(8, Math.round(region.height * card.side));
-  const red: number[] = [];
-  const green: number[] = [];
-  const blue: number[] = [];
-
-  // A small grid gives a robust value without processing every photo pixel.
-  for (let row = 1; row < gridSize; row += 1) {
-    for (let column = 1; column < gridSize; column += 1) {
-      const nx = column / gridSize;
-      const ny = row / gridSize;
-      if (region.circle && Math.pow(nx - 0.5, 2) + Math.pow(ny - 0.5, 2) > 0.18) continue;
-      const x = clamp(Math.round(left + nx * width), 0, image.cols - 1);
-      const y = clamp(Math.round(top + ny * height), 0, image.rows - 1);
-      const index = (y * image.cols + x) * image.channels;
-      // Mat.createFromBase64 follows OpenCV's decoded BGR channel order.
-      blue.push(image.buffer[index]);
-      green.push(image.buffer[index + 1]);
-      red.push(image.buffer[index + 2]);
-    }
-  }
-
-  return { r: trimmedMean(red), g: trimmedMean(green), b: trimmedMean(blue) };
-}
-
-function trimmedMean(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const trim = Math.floor(sorted.length * 0.15);
-  const kept = sorted.slice(trim, sorted.length - trim);
-  return Math.round(kept.reduce((total, value) => total + value, 0) / kept.length);
 }
 
 function channelDistance(a: RGB, b: RGB): number {

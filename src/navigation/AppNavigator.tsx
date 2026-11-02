@@ -1,4 +1,6 @@
 import React from 'react';
+import { Easing } from 'react-native';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
@@ -59,11 +61,15 @@ function HistoryStackNavigator() {
 // ─── App Navigator ────────────────────────────────────────────────────────────
 
 export const AppNavigator: React.FC = () => {
+  const reduced = useReducedMotion();
   return (
     <Tab.Navigator
       tabBar={props => <CleanBottomTabBar {...props} />}
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: '#ECF3ED' },
+        animation: reduced ? 'none' : 'fade',
+        transitionSpec: { animation: 'timing', config: { duration: reduced ? 0 : 240, easing: Easing.out(Easing.cubic) } },
       }}
     >
       <Tab.Screen name="Home" component={HomeStackNavigator} />

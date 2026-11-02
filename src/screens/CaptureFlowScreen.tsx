@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,6 +11,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useScreenLayout } from '../hooks/useScreenLayout';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { StatusBar } from 'expo-status-bar';
+import { advanceAutoCapture, emptyAutoCapture } from '../services/autoCapture';
+import { ScreenTransition } from '../components/ScreenTransition';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
@@ -57,7 +61,7 @@ const PIPELINE_STAGES = [
 // A shift duration is not chosen at the camera. The current prototype uses
 // the standard 8-hour reference consistently for every cumulative reading.
 const REFERENCE_SHIFT_HOURS = 8;
-const ALIGNMENT_CHECK_INTERVAL_MS = 1250;
+const ALIGNMENT_CHECK_INTERVAL_MS = 500;
 const FINAL_CAPTURE_COUNT = 3;
 
 function riskCopy(band: RiskBand, language: AppLanguage) {
@@ -78,6 +82,14 @@ export const CaptureFlowScreen: React.FC = () => {
   const { compact, horizontalPadding, bottomClearance } = useScreenLayout();
   const [zoom, setZoom] = useState(0);
   const [needsLensTip, setNeedsLensTip] = useState(false);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
+  const [pictureSize, setPictureSize] = useState<string>();
+  const [stabilityProgress, setStabilityProgress] = useState(0);
+  const [autoPaused, setAutoPaused] = useState(false);
+  const stability = useRef(emptyAutoCapture());
+  const captureLock = useRef(false);
+  const captureRetries = useRef(0);
+  const lifecycle = useRef(0);
   const { language } = useLanguage();
   const sarvamText = useSarvamText();
   const [step, setStep] = useState<Step>('camera');
@@ -108,11 +120,23 @@ export const CaptureFlowScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      lifecycle.current += 1;
+      setAppActive(state === 'active');
+      invalidateAlignment();
+    });
+    return () => { lifecycle.current += 1; subscription.remove(); };
+  }, []);
+
+  useEffect(() => {
     if (!isFocused) {
+      lifecycle.current += 1;
       setCameraReady(false);
       alignmentSuccesses.current = 0;
       alignmentStatusRef.current = 'checking';
       setAlignmentStatus('checking');
+      stability.current = emptyAutoCapture();
+      setStabilityProgress(0);
     }
   }, [isFocused]);
 
@@ -121,7 +145,7 @@ export const CaptureFlowScreen: React.FC = () => {
   }, [route.params?.initialTorch]);
 
   useEffect(() => {
-    if (step !== 'camera' || !isFocused || !cameraReady || !permission?.granted || capturing) return;
+    if (step !== 'camera' || !isFocused || !appActive || !cameraReady || !permission?.granted || capturing || autoPaused) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -146,25 +170,29 @@ export const CaptureFlowScreen: React.FC = () => {
         // compressed still periodically. Do not use skipProcessing here: it
         // bypasses JPEG quality and orientation correction, creating full-size
         // frames that make iOS stutter during the live alignment check.
-        // Two readable samples are required before the UI declares the card
-        // aligned, which keeps the status from flickering.
+        // Require three consistent observations before starting the final burst.
         const preview = await cameraRef.current?.takePictureAsync({
-          quality: 0.1,
+          quality: 0.45,
           base64: true,
           exif: false,
           shutterSound: false,
         });
         previewUri = preview?.uri;
-        await extractRegionsFromImage(preview?.base64 ?? '');
+        const regions = await extractRegionsFromImage(preview?.base64 ?? '');
         if (cancelled) return;
 
         alignmentFailures.current = 0;
         setNeedsLensTip(false);
         alignmentSuccesses.current += 1;
-        if (alignmentSuccesses.current >= 2) updateAlignmentStatus('aligned');
+        const observation = advanceAutoCapture(stability.current, regions, Date.now());
+        stability.current = observation.state;
+        setStabilityProgress(observation.progress);
+        updateAlignmentStatus(observation.ready ? 'aligned' : 'checking');
       } catch (error) {
         if (cancelled) return;
         alignmentSuccesses.current = 0;
+        stability.current = emptyAutoCapture();
+        setStabilityProgress(0);
         alignmentFailures.current += 1;
         setNeedsLensTip(alignmentFailures.current >= 4);
         const nextStatus: AlignmentStatus = error instanceof CaptureError && error.problem === 'too_dark'
@@ -197,10 +225,16 @@ export const CaptureFlowScreen: React.FC = () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [cameraReady, capturing, isFocused, permission?.granted, step, zoom, torchOn]);
+  }, [cameraReady, capturing, isFocused, appActive, permission?.granted, step, zoom, torchOn, autoPaused]);
+
+  useEffect(() => {
+    if (alignmentStatus === 'aligned' && settings && !autoPaused && isFocused && appActive) void handleCapture();
+  }, [alignmentStatus, settings, autoPaused, isFocused, appActive]);
 
   async function handleCapture() {
-    if (!settings || capturing || alignmentStatus !== 'aligned') return;
+    if (!settings || captureLock.current || alignmentStatusRef.current !== 'aligned' || !isFocused || !appActive) return;
+    captureLock.current = true;
+    const generation = lifecycle.current;
     setCapturing(true);
     setStageIndex(0);
 
@@ -220,6 +254,7 @@ export const CaptureFlowScreen: React.FC = () => {
 
       const frameRegions = [];
       for (let index = 0; index < FINAL_CAPTURE_COUNT; index += 1) {
+        if (generation !== lifecycle.current) throw new CaptureError('unstable_capture', 'Scan interrupted. Show the band again.');
         const photo = await cameraRef.current?.takePictureAsync({
           quality: 0.78,
           base64: true,
@@ -235,6 +270,7 @@ export const CaptureFlowScreen: React.FC = () => {
       }
 
       imageUri = capturedImageUris[0] ?? '';
+      setCameraReady(false);
       setStep('processing');
 
       let progressIndex = 0;
@@ -245,7 +281,9 @@ export const CaptureFlowScreen: React.FC = () => {
       }
 
       const regions = mergeCaptureRegions(frameRegions);
+      if (generation !== lifecycle.current) throw new CaptureError('unstable_capture', 'Scan interrupted. Show the band again.');
       processed = await runExposurePipeline(regions, REFERENCE_SHIFT_HOURS);
+      if (generation !== lifecycle.current) throw new CaptureError('unstable_capture', 'Scan interrupted. Show the band again.');
       keepPrimaryImage = true;
       setResult(processed);
     } catch (error) {
@@ -253,8 +291,12 @@ export const CaptureFlowScreen: React.FC = () => {
         ? error.message
         : 'We could not read the two indicators. Centre the small card and try again.';
       setCaptureProblem(message);
-      setStep('unreadable');
+      captureRetries.current += 1;
+      setAutoPaused(captureRetries.current >= 2);
+      invalidateAlignment();
+      setStep('camera');
       setCapturing(false);
+      captureLock.current = false;
       return;
     } finally {
       const disposableUris = keepPrimaryImage ? capturedImageUris.slice(1) : capturedImageUris;
@@ -272,6 +314,7 @@ export const CaptureFlowScreen: React.FC = () => {
     setPendingScan(scan);
     setStep('result');
     setCapturing(false);
+    captureLock.current = false;
     void persistScan(scan);
   }
 
@@ -350,6 +393,11 @@ export const CaptureFlowScreen: React.FC = () => {
   }
 
   function reset() {
+    captureRetries.current = 0;
+    setAutoPaused(false);
+    captureLock.current = false;
+    stability.current = emptyAutoCapture();
+    setStabilityProgress(0);
     setNeedsLensTip(false);
     setStep('camera');
     setResult(null);
@@ -367,6 +415,8 @@ export const CaptureFlowScreen: React.FC = () => {
   }
 
   function invalidateAlignment() {
+    stability.current = emptyAutoCapture();
+    setStabilityProgress(0);
     alignmentSuccesses.current = 0;
     alignmentFailures.current = 0;
     alignmentStatusRef.current = 'checking';
@@ -384,8 +434,20 @@ export const CaptureFlowScreen: React.FC = () => {
     setTorchOn(value => !value);
   }
 
+  async function prepareCamera() {
+    const generation = lifecycle.current;
+    const sizes = await cameraRef.current?.getAvailablePictureSizesAsync().catch(() => []);
+    if (generation !== lifecycle.current) return;
+    const supported = (sizes ?? []).map(value => ({ value,
+      edge: Math.max(...value.split('x').map(Number)) })).filter(size => Number.isFinite(size.edge));
+    supported.sort((a, b) => Math.abs(a.edge - 1280) - Math.abs(b.edge - 1280));
+    if (supported[0]) setPictureSize(supported[0].value);
+    invalidateAlignment();
+    setCameraReady(true);
+  }
+
   const cameraPrompt = alignmentStatus === 'aligned'
-    ? { title: 'Ready to scan', body: 'Indicators and reference found. Hold steady.' }
+    ? { title: 'Reading your band…', body: 'Hold steady. No tap needed.' }
     : alignmentStatus === 'dark'
       ? { title: 'More light needed', body: torchOn ? 'Move to brighter, even light.' : 'Turn on the light or move to a brighter spot.' }
       : alignmentStatus === 'glare'
@@ -396,7 +458,9 @@ export const CaptureFlowScreen: React.FC = () => {
             ? { title: 'Scanner unavailable', body: 'Reopen the development build and check camera access.' }
             : needsLensTip
               ? { title: 'Still looking for the indicators', body: 'If the image looks hazy, gently clean the camera lens. Keep the full card upright and try moving closer.' }
-              : { title: 'Bring the card into view', body: 'Keep the CuSO₄ strip, FeSO₄ dot and colour reference scale visible. Move closer or use + to zoom.' };
+              : stabilityProgress > 0
+                ? { title: 'Band found — hold steady', body: 'Checking the indicators. Scanning starts automatically.' }
+                : { title: 'Show your band', body: 'Keep the CuSO₄ strip, FeSO₄ dot and reference scale visible together. We’ll scan automatically.' };
 
   if (step === 'camera') {
     if (!permission) {
@@ -407,7 +471,8 @@ export const CaptureFlowScreen: React.FC = () => {
     }
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        {isFocused && <CameraView
+        <StatusBar style="light" />
+        {isFocused && appActive && <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           active={isFocused}
@@ -416,7 +481,8 @@ export const CaptureFlowScreen: React.FC = () => {
           animateShutter={false}
           enableTorch={torchOn}
           zoom={zoom}
-          onCameraReady={() => setCameraReady(true)}
+          pictureSize={pictureSize}
+          onCameraReady={() => void prepareCamera()}
           onMountError={() => {
             setCameraReady(false);
             alignmentStatusRef.current = 'unavailable';
@@ -450,10 +516,14 @@ export const CaptureFlowScreen: React.FC = () => {
               {alignmentStatus === 'dark' && !torchOn && <TouchableOpacity style={styles.promptAction} disabled={capturing} onPress={toggleTorch} accessibilityRole="button"><Text style={styles.promptActionText}>{sarvamText('Turn on light')}</Text></TouchableOpacity>}
               {alignmentStatus === 'glare' && torchOn && <TouchableOpacity style={styles.promptAction} disabled={capturing} onPress={toggleTorch} accessibilityRole="button"><Text style={styles.promptActionText}>{sarvamText('Turn off light')}</Text></TouchableOpacity>}
             </View>
-            <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing || alignmentStatus !== 'aligned') && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing || alignmentStatus !== 'aligned'} accessibilityRole="button" accessibilityLabel="Capture wristband">
-              <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
-              <Text style={styles.captureLabel}>{capturing ? sarvamText('Hold steady…') : !cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : sarvamText('Looking for indicators…')}</Text>
-            </TouchableOpacity>
+            <View style={styles.autoCaptureStatus} accessibilityLiveRegion="polite">
+              <View style={styles.autoProgressTrack}><View style={[styles.autoProgressFill, { width: `${capturing ? 100 : Math.round(stabilityProgress * 100)}%` }]} /></View>
+              <Text style={styles.autoCaptureText}>{sarvamText(capturing ? 'Reading indicators…' : !cameraReady ? 'Starting camera…' : autoPaused ? 'Automatic scan paused' : 'Scanning automatically · no tap needed')}</Text>
+              {!!captureProblem && <Text style={styles.instructionBody}>{sarvamText(captureProblem)}</Text>}
+              {autoPaused && <TouchableOpacity style={styles.promptAction} accessibilityRole="button" onPress={() => {
+                captureRetries.current = 0; setAutoPaused(false); setCaptureProblem(''); invalidateAlignment();
+              }}><Text style={styles.promptActionText}>{sarvamText('Try automatic scan again')}</Text></TouchableOpacity>}
+            </View>
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -463,13 +533,13 @@ export const CaptureFlowScreen: React.FC = () => {
   if (step === 'processing') {
     const progress = Math.min(1, (stageIndex + 1) / PIPELINE_STAGES.length);
     return (
-      <View style={styles.center}>
+      <ScreenTransition><View style={styles.center}>
         <View style={styles.processingIcon}><Ionicons name="scan-outline" size={32} color={theme.colors.primary} /></View>
         <Text style={styles.processingTitle}>{tx('checkingBand', 'Checking your wristband')}</Text>
         <Text style={styles.processingBody}>{tx('staysOnPhone', 'This stays on the phone.')}</Text>
         <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress * 100}%` }]} /></View>
         <Text style={styles.processingStatus}>{tx((['alignImage', 'readPatches', 'checkBand', 'calculateExposure', 'prepareResult'] as const)[stageIndex], PIPELINE_STAGES[stageIndex])}</Text>
-      </View>
+      </View></ScreenTransition>
     );
   }
 
@@ -479,7 +549,7 @@ export const CaptureFlowScreen: React.FC = () => {
 
   if (!result) return null;
 
-  return <ResultStep
+  return <ScreenTransition><ResultStep
     result={result}
     settings={settings}
     language={language}
@@ -490,7 +560,7 @@ export const CaptureFlowScreen: React.FC = () => {
     onRescan={reset}
     onDone={() => navigation.navigate('Home')}
     onHistory={() => navigation.navigate('History')}
-  />;
+  /></ScreenTransition>;
 };
 
 const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: () => void }> = ({ message, onRescan, onDone }) => (
@@ -657,10 +727,10 @@ const styles = StyleSheet.create({
   instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
   cameraBottom: { alignItems: 'center', gap: 14 },
   cameraBottomCompact: { gap: 8 },
-  captureButton: { alignItems: 'center', gap: theme.spacing.sm },
-  captureButtonDisabled: { opacity: 0.55 },
-  captureButtonInner: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#fff', borderWidth: 5, borderColor: '#ffffff99', justifyContent: 'center', alignItems: 'center' },
-  captureLabel: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, backgroundColor: '#00000088', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
+  autoCaptureStatus: { width: '100%', maxWidth: 480, alignItems: 'center', gap: 8 },
+  autoCaptureText: { color: '#fff', fontFamily: theme.typography.family.medium, fontSize: 12, textAlign: 'center' },
+  autoProgressTrack: { width: 110, height: 4, borderRadius: 2, overflow: 'hidden', backgroundColor: '#FFFFFF40' },
+  autoProgressFill: { height: '100%', borderRadius: 2, backgroundColor: '#6EE7B7' },
   permissionScreen: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center', paddingBottom: 150, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
   permissionIcon: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.lg },
   permissionTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary, textAlign: 'center' },

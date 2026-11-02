@@ -39,14 +39,15 @@ export function makeScannerSample(
   for (let y = card.top; y <= card.top + card.side; y += 1) {
     for (let x = card.left; x <= card.left + card.side; x += 1) {
       const offset = (y * width + x) * 3;
-      buffer[offset] = cardBase;
-      buffer[offset + 1] = cardBase;
-      buffer[offset + 2] = cardBase;
+      buffer[offset] = reference.b;
+      buffer[offset + 1] = reference.g;
+      buffer[offset + 2] = reference.r;
     }
   }
-  paint(buffer, { x: 0.55, y: 0.08, width: 0.26, height: 0.17 }, reference, card, width);
-  paint(buffer, { x: 0.53, y: 0.38, width: 0.28, height: 0.30 }, expiry, card, width);
-  paint(buffer, { x: 0.14, y: 0.17, width: 0.28, height: 0.29 }, sensing, card, width);
+  paint(buffer, { x: 0.3, y: 0.12, width: 0.12, height: 0.12 }, expiry, card, width);
+  paint(buffer, { x: 0.26, y: 0.34, width: 0.19, height: 0.19 }, sensing, card, width);
+  paint(buffer, { x: 0.28, y: 0.64, width: 0.15, height: 0.14 }, { r: 100, g: 125, b: 160 }, card, width);
+  paint(buffer, { x: 0.28, y: 0.78, width: 0.15, height: 0.14 }, { r: 150, g: 110, b: 95 }, card, width);
   return { name, image: { cols: width, rows: height, channels: 3, buffer }, expected: { sensing, expiry, reference } };
 }
 

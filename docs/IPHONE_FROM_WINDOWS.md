@@ -204,3 +204,22 @@ WSL's gateway can change after a restart. Check it with
 command; if changed, update the Windows relay and its scoped firewall rule
 as well. Do not attach the phone to USBIPD while using the Windows relay.
 The relay follows [xtool's documented Windows workaround](https://github.com/xtool-org/xtool/issues/19#issuecomment-2898986718).
+
+## Current USB signing connection — 2 November 2026
+
+This PC now uses WSL mirrored networking (`networkingMode=mirrored` in
+`C:\Users\Aarya\.wslconfig`). The previous NAT route could reach the USB
+relay but timed out on all internet connections while Windows had internet.
+Mirrored mode restored Apple signing access. Use the Windows Apple Mobile
+Device Service through localhost; USBIPD remains detached:
+
+```powershell
+wsl -d Ubuntu -u root --exec env USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015 xtool devices --usb --no-wait
+wsl -d Ubuntu -u root --exec env USBMUXD_SOCKET_ADDRESS=127.0.0.1:27015 xtool install --usb /mnt/c/Users/Aarya/Documents/ChatGPT/vajrasetu/build/iphone-13ee11b/VajraSetu-unsigned.ipa
+```
+
+Replace the IPA path with the verified artifact from the intended commit.
+The signed installed bundle identifier is
+`XTL-QGC927R2FF.com.arnav2007.vajra-setu-app`; use that identifier for
+`xtool launch`, rather than the unsigned bundle ID in build metadata.
+Keep the signing team/identifier consistent and update in place.
