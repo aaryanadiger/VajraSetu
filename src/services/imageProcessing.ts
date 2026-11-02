@@ -29,6 +29,8 @@ export type CaptureProblem =
   | 'missing_image'
   | 'card_not_in_frame'
   | 'poor_lighting'
+  | 'too_dark'
+  | 'glare'
   | 'unstable_capture';
 
 /** A recoverable scan problem that the UI can turn into a simple retry tip. */
@@ -156,7 +158,7 @@ export function computeDeltaE(targetRGB: RGB, referenceRGB: RGB): number {
 // ─── Region extraction ──────────────────────────────────────────────────────
 
 /**
- * Reads the indicator locations from a card held within the central camera guide.
+ * Reads the CuSO4 strip, FeSO4 dot and neutral reference on the printed scale.
  *
  * This deliberately does not use a learned model. The coloured pads have known
  * positions on the card, so a bounded search for the white reference and two
@@ -213,8 +215,8 @@ interface RelativeRegion {
   circle?: boolean;
 }
 
-// These zones match the on-screen guides when the small indicator card is
-// aligned with the square camera frame. The CuSO4 pad sits upper-left, the
+// These zones describe the physical card, independently of preview dimensions.
+// The CuSO4 pad sits upper-left, the
 // FeSO4 dot sits toward the centre-right, and plain white card is sampled
 // upper-right.
 const INDICATOR_ZONES: Record<'reference' | 'expiry' | 'sensing', RelativeRegion> = {
@@ -236,7 +238,7 @@ interface CardCandidate {
 
 function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
   if (image.channels < 3 || image.cols < 180 || image.rows < 180) {
-    throw new CaptureError('card_not_in_frame', 'Move the indicator card closer and keep it inside the frame.');
+    throw new CaptureError('card_not_in_frame', 'Move closer so the CuSO₄ strip, FeSO₄ dot and reference scale are visible.');
   }
 
   const candidate = findIndicatorCard(image);
@@ -247,11 +249,17 @@ function extractCentredIndicatorRegions(image: DecodedImage): CaptureRegions {
   const sensingRGB = sampleRegion(image, card, INDICATOR_ZONES.sensing);
 
   const referenceBrightness = rgbBrightness(referenceRGB);
-  if (referenceBrightness < 110 || referenceBrightness > 252 || rgbChroma(referenceRGB) > 70) {
+  if (referenceBrightness < 110) {
+    throw new CaptureError('too_dark', 'More light needed. Turn on the light or move to a brighter spot.');
+  }
+  if (referenceBrightness > 252) {
+    throw new CaptureError('glare', 'Glare on the reference scale. Turn off the light or tilt the phone slightly.');
+  }
+  if (rgbChroma(referenceRGB) > 70) {
     throw new CaptureError('poor_lighting', 'Use even light and keep the white part of the card visible.');
   }
   if (channelDistance(expiryRGB, referenceRGB) < 14 || channelDistance(sensingRGB, referenceRGB) < 14) {
-    throw new CaptureError('card_not_in_frame', 'Centre the small card so both coloured indicators are inside the frame.');
+    throw new CaptureError('card_not_in_frame', 'Keep the CuSO₄ strip, FeSO₄ dot and reference scale visible together.');
   }
 
   return {
@@ -309,7 +317,7 @@ export function mergeCaptureRegions(frames: CaptureRegions[]): CaptureRegions {
 }
 
 /**
- * Finds the card at slightly different positions and sizes inside the guide.
+ * Searches for the physical card across the captured image without a UI guide.
  * This is intentionally bounded: it is fast enough for an on-device preview
  * and avoids accidentally sampling the worker's hand or the surrounding work
  * surface. Rotation/perspective correction is the next physical-card upgrade:
@@ -319,9 +327,41 @@ function findIndicatorCard(image: DecodedImage): CardCandidate {
   const centreSide = Math.round(Math.min(image.cols * 0.62, image.rows * 0.46));
   const centreLeft = (image.cols - centreSide) / 2;
   const centreTop = (image.rows - centreSide) / 2;
-  const scales = [0.78, 0.9, 1, 1.12, 1.24];
-  const offsets = [-0.2, -0.1, 0, 0.1, 0.2];
+  const scales = [1, 0.9, 1.12, 0.78, 1.24, 0.62, 0.5, 1.45, 1.7];
+  const offsets = [0, -0.1, 0.1, -0.2, 0.2, -0.35, 0.35, -0.5, 0.5, -0.7, 0.7, -0.9, 0.9];
   let best: CardCandidate | undefined;
+
+  function consider(bounds: CardBounds) {
+    if (!isInsideImage(bounds, image)) return;
+    const reference = sampleRegion(image, bounds, INDICATOR_ZONES.reference, 8);
+    const expiry = sampleRegion(image, bounds, INDICATOR_ZONES.expiry, 8);
+    const sensing = sampleRegion(image, bounds, INDICATOR_ZONES.sensing, 8);
+    // A shifted box can mix a pad with the dark background and appear to
+    // have stronger colour contrast. Compare its inner and outer samples
+    // so that this accidental contrast does not win the search.
+    const inset = (region: RelativeRegion): RelativeRegion => ({
+      ...region, x: region.x + region.width * 0.25,
+      y: region.y + region.height * 0.25,
+      width: region.width * 0.5, height: region.height * 0.5,
+    });
+    const consistencyPenalty = (
+      channelDistance(reference, sampleRegion(image, bounds, inset(INDICATOR_ZONES.reference), 5))
+      + channelDistance(expiry, sampleRegion(image, bounds, inset(INDICATOR_ZONES.expiry), 5))
+      + channelDistance(sensing, sampleRegion(image, bounds, inset(INDICATOR_ZONES.sensing), 5))
+    ) / 70;
+    // The full card must be present, not just three coincidental colours.
+    // Check neutral card margins so background cannot masquerade as a
+    // darkened sensing strip when the search moves off centre.
+    const marginPenalty = [
+      { x: 0.03, y: 0.03 }, { x: 0.88, y: 0.03 },
+      { x: 0.03, y: 0.88 }, { x: 0.88, y: 0.88 },
+    ].reduce((penalty, position) => {
+      const margin = sampleRegion(image, bounds, { ...position, width: 0.07, height: 0.07 }, 3);
+      return penalty + Math.max(0, channelDistance(margin, reference) - 100) / 150;
+    }, 0);
+    const score = scoreCardCandidate(reference, expiry, sensing) - consistencyPenalty - marginPenalty;
+    if (!best || score > best.score) best = { bounds, score };
+  }
 
   for (const scale of scales) {
     const side = Math.round(centreSide * scale);
@@ -334,11 +374,22 @@ function findIndicatorCard(image: DecodedImage): CardCandidate {
         };
         if (!isInsideImage(bounds, image)) continue;
 
-        const reference = sampleRegion(image, bounds, INDICATOR_ZONES.reference, 8);
-        const expiry = sampleRegion(image, bounds, INDICATOR_ZONES.expiry, 8);
-        const sensing = sampleRegion(image, bounds, INDICATOR_ZONES.sensing, 8);
-        const score = scoreCardCandidate(reference, expiry, sensing);
-        if (!best || score > best.score) best = { bounds, score };
+        consider(bounds);
+      }
+    }
+  }
+
+  // Refine the winning coarse position to sample patch interiors rather than
+  // accepting a partial overlap at the nearest search-grid location.
+  if (best) {
+    const coarse = best.bounds;
+    for (const sizeFactor of [0.9, 0.95, 1, 1.05, 1.1]) {
+      for (const dx of [-0.06, -0.03, 0, 0.03, 0.06]) {
+        for (const dy of [-0.06, -0.03, 0, 0.03, 0.06]) {
+          consider({ left: Math.round(coarse.left + dx * coarse.side),
+            top: Math.round(coarse.top + dy * coarse.side),
+            side: Math.round(coarse.side * sizeFactor) });
+        }
       }
     }
   }
@@ -346,7 +397,7 @@ function findIndicatorCard(image: DecodedImage): CardCandidate {
   if (!best || best.score < 2.25) {
     throw new CaptureError(
       'card_not_in_frame',
-      'Place the small card inside the guides with the blue square and yellow dot visible.'
+      'Move closer or zoom in. Keep the CuSO₄ strip, FeSO₄ dot and reference scale visible together.'
     );
   }
 

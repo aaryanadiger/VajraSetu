@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -15,8 +16,10 @@ const TAB_ICON = {
   History: { active: 'time', inactive: 'time-outline' },
 } as const;
 
-export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => (
-  <View style={styles.container}>
+export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigation }) => {
+  const insets = useSafeAreaInsets();
+  return (
+  <View style={[styles.container, { bottom: Math.max(insets.bottom, 12), left: Math.max(insets.left, 12), right: Math.max(insets.right, 12) }]}>
     <BlurView
       intensity={Platform.OS === 'ios' ? 88 : 58}
       tint={Platform.OS === 'ios' ? 'systemUltraThinMaterialLight' : 'light'}
@@ -63,6 +66,7 @@ export const CleanBottomTabBar: React.FC<BottomTabBarProps> = ({ state, navigati
     </BlurView>
   </View>
 );
+};
 
 const styles = StyleSheet.create({
   container: {

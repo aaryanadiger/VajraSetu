@@ -1,6 +1,8 @@
+import { useScreenLayout } from '../hooks/useScreenLayout';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, SafeAreaView,
+  View, Text, StyleSheet, FlatList,
   TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,6 +31,7 @@ function formatTime(iso: string): string {
 }
 
 export const WorkerHistoryScreen: React.FC = () => {
+  const { bottomClearance } = useScreenLayout();
   const navigation = useNavigation();
   const t = useSarvamText();
   const [workerName, setWorkerName] = useState('My exposure');
@@ -75,7 +78,7 @@ export const WorkerHistoryScreen: React.FC = () => {
         <FlatList
           data={readings}
           keyExtractor={r => r.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { width: '100%', maxWidth: 640, alignSelf: 'center', paddingBottom: bottomClearance }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={() => (
             <>
@@ -225,8 +228,8 @@ const styles = StyleSheet.create({
     color: theme.colors.text.primary,
     marginBottom: theme.spacing.lg,
   },
-  statsRow: { flexDirection: 'row', gap: theme.spacing.md },
-  statBox: { flex: 1, alignItems: 'center', gap: 2 },
+  statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.md },
+  statBox: { flex: 1, minWidth: 90, alignItems: 'center', gap: 2 },
   statValue: {
     fontFamily: theme.typography.family.bold,
     fontSize: theme.typography.size.md,

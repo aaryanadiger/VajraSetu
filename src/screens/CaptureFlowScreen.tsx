@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useScreenLayout } from '../hooks/useScreenLayout';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +19,6 @@ import { theme } from '../theme';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { CameraOverlay } from '../components/CameraOverlay';
 import {
   createWorker,
   getAccountProfile,
@@ -36,7 +36,7 @@ import { generateCSV, getExportFilename } from '../services/csv';
 import { shareCSVFile } from '../services/export';
 
 type Step = 'camera' | 'processing' | 'result' | 'unreadable';
-type AlignmentStatus = 'checking' | 'aligned' | 'adjust' | 'lighting' | 'unavailable';
+type AlignmentStatus = 'checking' | 'aligned' | 'adjust' | 'lighting' | 'dark' | 'glare' | 'unavailable';
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'failed';
 
 interface PendingScan {
@@ -75,6 +75,9 @@ export const CaptureFlowScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isFocused = useIsFocused();
+  const { compact, horizontalPadding, bottomClearance } = useScreenLayout();
+  const [zoom, setZoom] = useState(0);
+  const [needsLensTip, setNeedsLensTip] = useState(false);
   const { language } = useLanguage();
   const sarvamText = useSarvamText();
   const [step, setStep] = useState<Step>('camera');
@@ -105,6 +108,15 @@ export const CaptureFlowScreen: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (!isFocused) {
+      setCameraReady(false);
+      alignmentSuccesses.current = 0;
+      alignmentStatusRef.current = 'checking';
+      setAlignmentStatus('checking');
+    }
+  }, [isFocused]);
+
+  useEffect(() => {
     setTorchOn(Boolean(route.params?.initialTorch));
   }, [route.params?.initialTorch]);
 
@@ -120,7 +132,11 @@ export const CaptureFlowScreen: React.FC = () => {
     };
 
     const checkAlignment = async () => {
-      if (cancelled || alignmentCheckInFlight.current || alignmentStatusRef.current === 'unavailable') return;
+      if (cancelled || alignmentStatusRef.current === 'unavailable') return;
+      if (alignmentCheckInFlight.current) {
+        timer = setTimeout(() => void checkAlignment(), 150);
+        return;
+      }
       alignmentCheckInFlight.current = true;
       let previewUri: string | undefined;
       let scannerUnavailable = false;
@@ -140,14 +156,22 @@ export const CaptureFlowScreen: React.FC = () => {
         });
         previewUri = preview?.uri;
         await extractRegionsFromImage(preview?.base64 ?? '');
+        if (cancelled) return;
 
         alignmentFailures.current = 0;
+        setNeedsLensTip(false);
         alignmentSuccesses.current += 1;
         if (alignmentSuccesses.current >= 2) updateAlignmentStatus('aligned');
       } catch (error) {
+        if (cancelled) return;
         alignmentSuccesses.current = 0;
         alignmentFailures.current += 1;
-        const nextStatus: AlignmentStatus = error instanceof CaptureError && error.problem === 'poor_lighting'
+        setNeedsLensTip(alignmentFailures.current >= 4);
+        const nextStatus: AlignmentStatus = error instanceof CaptureError && error.problem === 'too_dark'
+          ? 'dark'
+          : error instanceof CaptureError && error.problem === 'glare'
+            ? 'glare'
+            : error instanceof CaptureError && error.problem === 'poor_lighting'
           ? 'lighting'
           : error instanceof CaptureError && error.problem === 'native_scanner_unavailable'
             ? 'unavailable'
@@ -173,7 +197,7 @@ export const CaptureFlowScreen: React.FC = () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [cameraReady, capturing, isFocused, permission?.granted, step]);
+  }, [cameraReady, capturing, isFocused, permission?.granted, step, zoom, torchOn]);
 
   async function handleCapture() {
     if (!settings || capturing || alignmentStatus !== 'aligned') return;
@@ -326,6 +350,7 @@ export const CaptureFlowScreen: React.FC = () => {
   }
 
   function reset() {
+    setNeedsLensTip(false);
     setStep('camera');
     setResult(null);
     setStageIndex(0);
@@ -341,6 +366,38 @@ export const CaptureFlowScreen: React.FC = () => {
     setAlignmentStatus('checking');
   }
 
+  function invalidateAlignment() {
+    alignmentSuccesses.current = 0;
+    alignmentFailures.current = 0;
+    alignmentStatusRef.current = 'checking';
+    setAlignmentStatus('checking');
+    setNeedsLensTip(false);
+  }
+
+  function changeZoom(delta: number) {
+    invalidateAlignment();
+    setZoom(value => Math.max(0, Math.min(0.3, value + delta)));
+  }
+
+  function toggleTorch() {
+    invalidateAlignment();
+    setTorchOn(value => !value);
+  }
+
+  const cameraPrompt = alignmentStatus === 'aligned'
+    ? { title: 'Ready to scan', body: 'Indicators and reference found. Hold steady.' }
+    : alignmentStatus === 'dark'
+      ? { title: 'More light needed', body: torchOn ? 'Move to brighter, even light.' : 'Turn on the light or move to a brighter spot.' }
+      : alignmentStatus === 'glare'
+        ? { title: 'Reduce the glare', body: 'Tilt the phone slightly or turn off the light.' }
+        : alignmentStatus === 'lighting'
+          ? { title: 'Use even lighting', body: 'Keep shadows off the strip, dot and reference scale.' }
+          : alignmentStatus === 'unavailable'
+            ? { title: 'Scanner unavailable', body: 'Reopen the development build and check camera access.' }
+            : needsLensTip
+              ? { title: 'Still looking for the indicators', body: 'If the image looks hazy, gently clean the camera lens. Keep the full card upright and try moving closer.' }
+              : { title: 'Bring the card into view', body: 'Keep the CuSO₄ strip, FeSO₄ dot and colour reference scale visible. Move closer or use + to zoom.' };
+
   if (step === 'camera') {
     if (!permission) {
       return <View style={styles.center}><ActivityIndicator color={theme.colors.primary} /></View>;
@@ -350,7 +407,7 @@ export const CaptureFlowScreen: React.FC = () => {
     }
     return (
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <CameraView
+        {isFocused && <CameraView
           ref={cameraRef}
           style={StyleSheet.absoluteFill}
           active={isFocused}
@@ -358,56 +415,47 @@ export const CaptureFlowScreen: React.FC = () => {
           autofocus="on"
           animateShutter={false}
           enableTorch={torchOn}
+          zoom={zoom}
           onCameraReady={() => setCameraReady(true)}
-          onMountError={() => setCameraReady(false)}
-        />
-        <CameraOverlay color={alignmentStatus === 'aligned' ? '#34D399' : alignmentStatus === 'lighting' ? '#FFD34D' : '#FFFFFF'} />
+          onMountError={() => {
+            setCameraReady(false);
+            alignmentStatusRef.current = 'unavailable';
+            setAlignmentStatus('unavailable');
+          }}
+        />}
 
-        <View style={styles.cameraChrome}>
+        <ScrollView style={styles.cameraScroll} contentContainerStyle={[styles.cameraChrome, { paddingHorizontal: horizontalPadding, paddingBottom: bottomClearance }]} showsVerticalScrollIndicator={false}>
           <View style={styles.cameraTopRow}>
             <TouchableOpacity style={styles.cameraButton} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Close scanner">
               <Ionicons name="close" size={25} color="#fff" />
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.cameraButton, torchOn && styles.cameraButtonActive]} onPress={() => setTorchOn(value => !value)} accessibilityRole="button" accessibilityLabel={torchOn ? 'Turn light off' : 'Turn light on'}>
+            <TouchableOpacity style={[styles.cameraButton, torchOn && styles.cameraButtonActive]} disabled={capturing} onPress={toggleTorch} accessibilityRole="button" accessibilityLabel={torchOn ? 'Turn light off' : 'Turn light on'}>
               <Ionicons name={torchOn ? 'flash' : 'flash-off'} size={22} color={torchOn ? '#FFD60A' : '#fff'} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.instructionCard}>
-            <Text style={styles.instructionTitle}>{tx('placeBand', 'Place the small indicator card in the frame')}</Text>
-            <Text style={styles.instructionBody}>{tx('keepSteady', 'Match the blue square and yellow circle to the guides. Keep the phone steady.')}</Text>
-            <View style={[
-              styles.alignmentPill,
-              alignmentStatus === 'aligned' && styles.alignmentPillReady,
-              alignmentStatus === 'lighting' && styles.alignmentPillWarning,
-              alignmentStatus === 'unavailable' && styles.alignmentPillWarning,
-            ]}>
-              <Ionicons
-                name={alignmentStatus === 'aligned' ? 'checkmark-circle' : alignmentStatus === 'lighting' ? 'sunny-outline' : alignmentStatus === 'unavailable' ? 'phone-portrait-outline' : 'scan-outline'}
-                size={16}
-                color={alignmentStatus === 'aligned' ? '#6EE7B7' : alignmentStatus === 'lighting' ? '#FFD34D' : '#FFFFFF'}
-              />
-              <Text accessibilityLiveRegion="polite" style={[styles.alignmentText, alignmentStatus === 'aligned' && styles.alignmentTextReady]}>
-                {alignmentStatus === 'aligned'
-                  ? tx('cardAligned', 'Aligned — ready to scan')
-                  : alignmentStatus === 'lighting'
-                    ? tx('needEvenLight', 'Use even light')
-                    : alignmentStatus === 'unavailable'
-                      ? tx('scannerNeedsBuild', 'Open the development build to scan')
-                      : alignmentStatus === 'checking'
-                        ? tx('checkingPosition', 'Checking card position…')
-                        : tx('moveCard', 'Move the card into the guides')}
-              </Text>
+          <View style={styles.cameraOpenSpace} pointerEvents="none" />
+          <View style={[styles.cameraBottom, compact && styles.cameraBottomCompact]}>
+            <View style={styles.zoomControls}>
+              <TouchableOpacity disabled={capturing || zoom <= 0} onPress={() => changeZoom(-0.05)} accessibilityRole="button" accessibilityLabel="Zoom out" style={styles.zoomButton}><Ionicons name="remove" size={22} color="#fff" /></TouchableOpacity>
+              <Text style={styles.zoomLabel}>{sarvamText(zoom === 0 ? 'Wide' : 'Zoomed')}</Text>
+              <TouchableOpacity disabled={capturing || zoom >= 0.3} onPress={() => changeZoom(0.05)} accessibilityRole="button" accessibilityLabel="Zoom in" style={styles.zoomButton}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity>
             </View>
-          </View>
-
-          <View style={styles.cameraBottom}>
+            <View style={styles.instructionCard} accessibilityLiveRegion="polite">
+              <View style={styles.promptHeading}>
+                <Ionicons name={alignmentStatus === 'aligned' ? 'checkmark-circle' : 'camera-outline'} size={18} color={alignmentStatus === 'aligned' ? '#6EE7B7' : '#FFE1A3'} />
+                <Text style={styles.instructionTitle}>{sarvamText(cameraPrompt.title)}</Text>
+              </View>
+              <Text style={styles.instructionBody}>{sarvamText(cameraPrompt.body)}</Text>
+              {alignmentStatus === 'dark' && !torchOn && <TouchableOpacity style={styles.promptAction} disabled={capturing} onPress={toggleTorch} accessibilityRole="button"><Text style={styles.promptActionText}>{sarvamText('Turn on light')}</Text></TouchableOpacity>}
+              {alignmentStatus === 'glare' && torchOn && <TouchableOpacity style={styles.promptAction} disabled={capturing} onPress={toggleTorch} accessibilityRole="button"><Text style={styles.promptActionText}>{sarvamText('Turn off light')}</Text></TouchableOpacity>}
+            </View>
             <TouchableOpacity style={[styles.captureButton, (!cameraReady || capturing || alignmentStatus !== 'aligned') && styles.captureButtonDisabled]} onPress={handleCapture} disabled={!cameraReady || capturing || alignmentStatus !== 'aligned'} accessibilityRole="button" accessibilityLabel="Capture wristband">
               <View style={styles.captureButtonInner}><Ionicons name="scan" size={28} color={theme.colors.primary} /></View>
-              <Text style={styles.captureLabel}>{capturing ? sarvamText('Hold steady…') : !cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : tx('alignBeforeScan', 'Align card to scan')}</Text>
+              <Text style={styles.captureLabel}>{capturing ? sarvamText('Hold steady…') : !cameraReady ? tx('startingCamera', 'Starting camera…') : alignmentStatus === 'aligned' ? tx('tapToScan', 'Tap to scan') : sarvamText('Looking for indicators…')}</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -446,30 +494,31 @@ export const CaptureFlowScreen: React.FC = () => {
 };
 
 const UnreadableStep: React.FC<{ message: string; onRescan: () => void; onDone: () => void }> = ({ message, onRescan, onDone }) => (
-  <SafeAreaView style={styles.permissionScreen}>
+  <SafeAreaView style={styles.resultScreen}><ScrollView contentContainerStyle={styles.permissionScreen}>
     <View style={[styles.permissionIcon, { backgroundColor: '#FFF4DB' }]}><Ionicons name="scan-outline" size={34} color={theme.colors.semantic.warning} /></View>
     <Text style={styles.permissionTitle}>Try that scan again</Text>
     <Text style={styles.permissionBody}>{message}</Text>
-    <Text style={styles.retryTip}>Use even light. Centre only the small card and match the blue square and yellow circle to their guides.</Text>
+    <Text style={styles.retryTip}>Use even light and keep the CuSO₄ strip, FeSO₄ dot and reference scale visible together. If the image looks hazy, gently clean the camera lens.</Text>
     <Button label="Scan again" onPress={onRescan} style={styles.permissionButton} />
     <Button label="Cancel" variant="outline" onPress={onDone} style={styles.cancelButton} />
-  </SafeAreaView>
+  </ScrollView></SafeAreaView>
 );
 
 const PermissionStep: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const { language } = useLanguage();
+  const { bottomClearance } = useScreenLayout();
   const sarvamText = useSarvamText();
   const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
     const local = translateUi(key, language, fallback);
     return local === fallback ? sarvamText(fallback) : local;
   };
   return (
-    <SafeAreaView style={styles.permissionScreen}>
+    <SafeAreaView style={styles.resultScreen}><ScrollView contentContainerStyle={[styles.permissionScreen, { paddingBottom: bottomClearance }]}>
       <View style={styles.permissionIcon}><Ionicons name="camera-outline" size={34} color={theme.colors.primary} /></View>
       <Text style={styles.permissionTitle}>{tx('cameraNeeded', 'Camera access is needed')}</Text>
       <Text style={styles.permissionBody}>{tx('cameraReason', 'Vajra Setu uses the camera to read the colour patches on your wristband.')}</Text>
       <Button label={tx('allowCamera', 'Allow camera')} onPress={onPress} style={styles.permissionButton} />
-    </SafeAreaView>
+    </ScrollView></SafeAreaView>
   );
 };
 
@@ -485,6 +534,7 @@ const ResultStep: React.FC<{
   onDone: () => void;
   onHistory: () => void;
 }> = ({ result, settings, language, saveStatus, saveProblem, onRetrySave, onExport, onRescan, onDone, onHistory }) => {
+  const { bottomClearance } = useScreenLayout();
   const sarvamText = useSarvamText();
   const tx = (key: Parameters<typeof translateUi>[0], fallback: string) => {
     const local = translateUi(key, language, fallback);
@@ -493,7 +543,7 @@ const ResultStep: React.FC<{
   if (!result.band_valid) {
     return (
       <SafeAreaView style={styles.resultScreen}>
-        <ScrollView contentContainerStyle={styles.resultContent}>
+        <ScrollView contentContainerStyle={[styles.resultContent, { paddingBottom: bottomClearance }]}>
           <View style={[styles.resultIcon, { backgroundColor: '#EF44441A' }]}><Ionicons name="close-circle" size={42} color={theme.colors.semantic.danger} /></View>
           <Text style={styles.resultHeading}>{tx('replaceBand', 'Replace the wristband')}</Text>
           <Text style={styles.resultBody}>{tx('replaceBandBody', 'The expiry patch is not valid, so this scan cannot be used. Do not rely on this result.')}</Text>
@@ -516,7 +566,7 @@ const ResultStep: React.FC<{
   const oel = settings?.oel_twa_ppm ?? 10;
   return (
     <SafeAreaView style={styles.resultScreen}>
-      <ScrollView contentContainerStyle={styles.resultContent}>
+      <ScrollView contentContainerStyle={[styles.resultContent, { paddingBottom: bottomClearance }]}>
         <View style={styles.resultHeader}>
           <TouchableOpacity onPress={onDone} style={styles.backButton} accessibilityRole="button" accessibilityLabel="Close result">
             <Ionicons name="close" size={24} color={theme.colors.text.primary} />
@@ -580,15 +630,20 @@ function pause(ms: number) { return new Promise(resolve => setTimeout(resolve, m
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#101820' },
   center: { flex: 1, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
-  cameraChrome: { flex: 1, justifyContent: 'space-between', padding: theme.spacing.xl, paddingTop: 18 },
+  cameraScroll: { flex: 1 },
+  cameraChrome: { flexGrow: 1, paddingTop: 12 },
+  cameraOpenSpace: { flex: 1, minHeight: 16 },
+  promptHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  promptAction: { alignSelf: 'center', padding: 12, minHeight: 44 },
+  promptActionText: { color: '#FFE1A3', fontFamily: theme.typography.family.semiBold },
+  zoomControls: { flexDirection: 'row', alignItems: 'center', borderRadius: 28, backgroundColor: '#101820B8' },
+  zoomButton: { minWidth: 48, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  zoomLabel: { color: '#fff', fontSize: 12, minWidth: 58, textAlign: 'center' },
   cameraTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   cameraButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#00000088', alignItems: 'center', justifyContent: 'center' },
   cameraButtonActive: { backgroundColor: '#6e5b0088' },
   instructionCard: {
-    position: 'absolute',
-    top: '15%',
-    left: theme.spacing.xl,
-    right: theme.spacing.xl,
+    width: '100%',
     alignSelf: 'center',
     backgroundColor: '#07111FAD',
     borderWidth: 1,
@@ -596,21 +651,17 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingVertical: theme.spacing.md,
     paddingHorizontal: theme.spacing.lg,
-    maxWidth: 360,
+    maxWidth: 480,
   },
-  instructionTitle: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
+  instructionTitle: { flexShrink: 1, color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.md, textAlign: 'center' },
   instructionBody: { color: '#ffffffCC', fontFamily: theme.typography.family.main, fontSize: theme.typography.size.xs, lineHeight: 18, textAlign: 'center', marginTop: 4 },
-  alignmentPill: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: '#FFFFFF1C' },
-  alignmentPillReady: { backgroundColor: '#06764766', borderWidth: 1, borderColor: '#6EE7B755' },
-  alignmentPillWarning: { backgroundColor: '#A15C003D' },
-  alignmentText: { color: '#FFFFFFE6', fontFamily: theme.typography.family.medium, fontSize: 12 },
-  alignmentTextReady: { color: '#D1FADF' },
-  cameraBottom: { alignItems: 'center', paddingBottom: 112 },
+  cameraBottom: { alignItems: 'center', gap: 14 },
+  cameraBottomCompact: { gap: 8 },
   captureButton: { alignItems: 'center', gap: theme.spacing.sm },
   captureButtonDisabled: { opacity: 0.55 },
   captureButtonInner: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#fff', borderWidth: 5, borderColor: '#ffffff99', justifyContent: 'center', alignItems: 'center' },
   captureLabel: { color: '#fff', fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, backgroundColor: '#00000088', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 },
-  permissionScreen: { flex: 1, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
+  permissionScreen: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center', paddingBottom: 150, backgroundColor: theme.colors.background.screen, justifyContent: 'center', alignItems: 'center', padding: theme.spacing.xxl },
   permissionIcon: { width: 72, height: 72, borderRadius: 24, backgroundColor: theme.colors.primaryLight, justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.lg },
   permissionTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.xl, color: theme.colors.text.primary, textAlign: 'center' },
   permissionBody: { fontFamily: theme.typography.family.main, fontSize: theme.typography.size.md, lineHeight: 22, color: theme.colors.text.secondary, textAlign: 'center', marginTop: theme.spacing.sm, maxWidth: 320 },
@@ -624,7 +675,7 @@ const styles = StyleSheet.create({
   progressFill: { height: '100%', backgroundColor: theme.colors.primary, borderRadius: 5 },
   processingStatus: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary, marginTop: theme.spacing.md },
   resultScreen: { flex: 1, backgroundColor: theme.colors.background.screen },
-  resultContent: { padding: theme.spacing.xl, paddingBottom: 48, alignItems: 'center' },
+  resultContent: { width: '100%', maxWidth: 600, alignSelf: 'center', padding: theme.spacing.xl, paddingBottom: 144, alignItems: 'center' },
   resultHeader: { width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: theme.spacing.xxl },
   backButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffffffAA', alignItems: 'center', justifyContent: 'center' },
   resultHeaderTitle: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.lg, color: theme.colors.text.primary },
@@ -640,7 +691,7 @@ const styles = StyleSheet.create({
   bigMetric: { fontFamily: theme.typography.family.bold, fontSize: 48, color: theme.colors.text.primary, letterSpacing: -1 },
   bigUnit: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.secondary },
   resultRule: { height: 1, backgroundColor: theme.colors.border, marginVertical: theme.spacing.lg },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: theme.spacing.sm },
+  detailRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center', paddingVertical: theme.spacing.sm },
   detailValue: { fontFamily: theme.typography.family.semiBold, fontSize: theme.typography.size.sm, color: theme.colors.text.primary },
   fullButton: { width: '100%', marginBottom: theme.spacing.md },
   secondaryActions: { flexDirection: 'row', width: '100%', gap: theme.spacing.md, marginTop: theme.spacing.sm },

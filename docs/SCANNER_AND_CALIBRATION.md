@@ -10,7 +10,7 @@ Never create, release, or expose people to H₂S to test the app. Use certified 
 
 ## Physical card expected by the app
 
-The camera guide expects a small indicator card with a repeatable orientation:
+The scanner expects a small indicator card with a repeatable orientation:
 
 ```text
 upper-left     CuSO₄ sensing patch (blue/green → brown → black)
@@ -18,7 +18,7 @@ centre-right   FeSO₄ expiry dot
 upper-right    light/neutral printed reference area
 ```
 
-The scanner searches a central square and samples these regions at fixed relative positions. Keep the card flat, complete, clean, dry, and fully inside the camera frame. Do not use the reactive areas themselves as registration marks.
+The scanner searches multiple positions and sizes across the image and samples these regions relative to each candidate card. No on-screen registration marks are required. The physical layout and upright orientation are still required; arbitrary rotation and perspective are not corrected. The neutral patch on the printed colour reference scale supplies lighting correction; the app does not decode every swatch. Keep the card flat, complete, clean, dry, and fully inside the camera frame. Do not use the reactive areas themselves as registration marks.
 
 ### Recommended production-card change
 
@@ -26,9 +26,9 @@ Print four small, non-reactive, high-contrast registration marks or a code aroun
 
 ## What happens during a scan
 
-1. The user grants camera access and aligns the physical card to the blue-square and yellow-circle guides.
+1. The user grants camera access and shows the CuSO₄ strip, FeSO₄ dot and reference scale together. Zoom and torch controls help with framing and lighting.
 2. The app samples small preview JPEGs roughly every 1.25 seconds.
-3. A candidate card must show a plausible neutral reference plus distinct sensing and expiry areas. Two consecutive successful samples show **Aligned — ready to scan**.
+3. A candidate card must show a plausible neutral reference plus distinct sensing and expiry areas. Two consecutive successful samples show **Ready to scan**.
 4. On tap, three higher-quality JPEGs are captured while the user holds steady.
 5. `react-native-fast-opencv` decodes each JPEG. Deterministic TypeScript searches and samples each frame independently.
 6. The app rejects the scan if cross-frame CIEDE2000 differences indicate movement or changing light. Otherwise it uses median RGB values to reduce camera noise.
@@ -42,8 +42,11 @@ Print four small, non-reactive, high-contrast registration marks or a code aroun
 | App feedback | Meaning | Operator action |
 | --- | --- | --- |
 | `Checking card position…` | Preview is being sampled. | Hold still briefly. |
-| `Aligned — ready to scan` | Two successive samples passed card and lighting checks. | Capture the image. |
-| `Move the card into the guides` | Card layout was not recognised. | Centre only the small indicator card; ensure both reactive areas are visible. |
+| `Ready to scan` | Two successive samples passed card and lighting checks. | Capture the image. |
+| `Bring the card into view` | Card layout was not recognised. | Keep the full card upright; move closer or zoom. |
+| `More light needed` | Reference is too dark. | Turn on the light or move to a brighter spot. |
+| `Reduce the glare` | Reference is clipped. | Turn off the light or tilt the phone slightly. |
+| `Still looking for the indicators` | Repeated recognition failures. | Check framing; if the image looks hazy, clean the lens. This is a suggestion, not detection of dirt. |
 | `Use even light` | Reference is too dark, bright, or coloured. | Move away from glare/shadow; use diffuse light. |
 | `Open the development build to scan` | Native image module is unavailable, usually Expo Go. | Install/run the iOS or Android development build. |
 | `Replace the wristband` | Expiry gate failed. | Do not use the exposure result; use a new band and rescan. |

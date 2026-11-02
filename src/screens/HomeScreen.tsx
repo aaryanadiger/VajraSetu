@@ -1,3 +1,4 @@
+import { useScreenLayout } from '../hooks/useScreenLayout';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -49,6 +50,7 @@ function initials(name?: string) {
 }
 
 export const HomeScreen: React.FC = () => {
+  const { bottomClearance } = useScreenLayout();
   const navigation = useNavigation<any>();
   const { language, setLanguage } = useLanguage();
   const sarvamText = useSarvamText();
@@ -92,7 +94,7 @@ export const HomeScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: bottomClearance }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={theme.colors.primary} />}
       >
@@ -158,7 +160,7 @@ export const HomeScreen: React.FC = () => {
         </View>
 
         <Text style={styles.footerNote}>{tx('scanAfterShift', 'Scan your wristband after your shift or when your supervisor asks.')}</Text>
-        <View style={{ height: 92 }} />
+
       </ScrollView>
 
       <Modal visible={languageOpen} transparent animationType="slide" onRequestClose={() => setLanguageOpen(false)}>
@@ -315,8 +317,8 @@ const SheetDetail: React.FC<{ icon: keyof typeof Ionicons.glyphMap; label: strin
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.background.top },
-  content: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24, zIndex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
+  content: { width: '100%', maxWidth: 640, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24, zIndex: 1 },
+  header: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
   brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoMark: { width: 38, height: 38 },
   wordmark: { fontFamily: theme.typography.family.logo, fontSize: 29, color: theme.colors.text.primary, letterSpacing: -0.5 },
@@ -327,12 +329,12 @@ const styles = StyleSheet.create({
   accountInitials: { fontFamily: theme.typography.family.bold, fontSize: 13, color: '#fff', letterSpacing: 0.3 },
   screenTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 20, color: theme.colors.text.primary, marginBottom: 12 },
   exposureSurface: { backgroundColor: theme.colors.background.card, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: theme.colors.border, shadowColor: '#385F59', shadowOpacity: 0.05, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 1 },
-  surfaceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  surfaceHeader: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'center' },
   surfaceLabel: { fontFamily: theme.typography.family.medium, fontSize: 14, color: theme.colors.text.secondary },
   statusPill: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 999 },
   statusPillText: { fontFamily: theme.typography.family.bold, fontSize: 10, letterSpacing: 0.4 },
   loader: { height: 108, justifyContent: 'center' },
-  valueLine: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 24, marginBottom: 18 },
+  valueLine: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8, marginTop: 24, marginBottom: 18 },
   exposureValue: { fontFamily: theme.typography.family.bold, fontSize: 52, lineHeight: 56, color: theme.colors.text.primary, letterSpacing: -2 },
   exposureUnit: { fontFamily: theme.typography.family.main, fontSize: 19, color: theme.colors.text.primary },
   meter: { flexDirection: 'row', gap: 3, height: 20, alignItems: 'stretch' },
@@ -352,8 +354,8 @@ const styles = StyleSheet.create({
   primaryCopy: { flex: 1 },
   primaryTitle: { fontFamily: theme.typography.family.semiBold, fontSize: 17, color: '#fff' },
   primaryHint: { fontFamily: theme.typography.family.main, fontSize: 12, color: '#DDEDE9', marginTop: 2 },
-  quickActions: { flexDirection: 'row', gap: 12, marginTop: 16 },
-  quickAction: { flex: 1, minHeight: 82, backgroundColor: theme.colors.background.card, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
+  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 16 },
+  quickAction: { flex: 1, minWidth: 120, minHeight: 82, backgroundColor: theme.colors.background.card, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 18, padding: 14, justifyContent: 'space-between' },
   quickActionText: { fontFamily: theme.typography.family.medium, fontSize: 13, color: theme.colors.text.primary, marginTop: 10 },
   guideBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#10182866' },
   guideSheet: { backgroundColor: '#fff', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 34, borderTopWidth: 1, borderColor: '#fff' },

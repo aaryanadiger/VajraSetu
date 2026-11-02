@@ -1,6 +1,8 @@
+import { useScreenLayout } from '../hooks/useScreenLayout';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, SafeAreaView,
+  View, Text, StyleSheet, ScrollView,
   TouchableOpacity, Alert, Modal, TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -35,6 +37,7 @@ function SettingRow({
 }
 
 export const SettingsScreen: React.FC = () => {
+  const { bottomClearance } = useScreenLayout();
   const t = useSarvamText();
   const [settings, setLocalSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [exporting, setExporting] = useState(false);
@@ -107,7 +110,7 @@ export const SettingsScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safe}>
       <LinearGradient colors={['#FAF7F0', '#EEF4EF', '#DCEAE4']} style={StyleSheet.absoluteFill} />
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={{ width: '100%', maxWidth: 640, alignSelf: 'center', paddingBottom: bottomClearance }} showsVerticalScrollIndicator={false}>
         <AppHeader />
 
         <View style={styles.titleSection}>
@@ -210,7 +213,7 @@ export const SettingsScreen: React.FC = () => {
           <Text style={styles.appInfoText}>Index: Austigard & Smedbold (2022), Ann Work Expo Health 66(1)</Text>
         </View>
 
-        <View style={{ height: 100 }} />
+
       </ScrollView>
       <Modal visible={profileOpen} transparent animationType="slide" onRequestClose={() => setProfileOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -262,7 +265,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: theme.spacing.lg,
   },
-  limitRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border },
+  limitRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: theme.spacing.md, paddingVertical: theme.spacing.md, borderTopWidth: 1, borderTopColor: theme.colors.border },
   limitLabel: { fontFamily: theme.typography.family.medium, fontSize: theme.typography.size.sm, color: theme.colors.text.primary },
   limitNote: { fontFamily: theme.typography.family.main, fontSize: 11, color: theme.colors.text.secondary, marginTop: 2, maxWidth: 220, lineHeight: 15 },
   limitValue: { fontFamily: theme.typography.family.bold, fontSize: theme.typography.size.md, color: theme.colors.primary },

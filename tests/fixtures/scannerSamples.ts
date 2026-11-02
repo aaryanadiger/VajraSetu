@@ -10,7 +10,7 @@ const width = 320;
 const height = 320;
 const card = { left: 87, top: 87, side: 147 };
 
-function paint(buffer: Uint8Array, region: { x: number; y: number; width: number; height: number }, rgb: RGB) {
+function paint(buffer: Uint8Array, region: { x: number; y: number; width: number; height: number }, rgb: RGB, card: { left: number; top: number; side: number }, width: number) {
   const left = card.left + Math.round(region.x * card.side);
   const top = card.top + Math.round(region.y * card.side);
   const regionWidth = Math.round(region.width * card.side);
@@ -30,8 +30,10 @@ export function makeScannerSample(
   sensing: RGB = { r: 195, g: 231, b: 216 },
   expiry: RGB = { r: 245, g: 208, b: 123 },
   reference: RGB = { r: 245, g: 245, b: 245 },
-  cardBase = 220
+  cardBase = 220,
+  geometry = { width, height, card }
 ): ScannerSample {
+  const { width, height, card } = geometry;
   const buffer = new Uint8Array(width * height * 3);
   buffer.fill(35);
   for (let y = card.top; y <= card.top + card.side; y += 1) {
@@ -42,9 +44,9 @@ export function makeScannerSample(
       buffer[offset + 2] = cardBase;
     }
   }
-  paint(buffer, { x: 0.55, y: 0.08, width: 0.26, height: 0.17 }, reference);
-  paint(buffer, { x: 0.53, y: 0.38, width: 0.28, height: 0.30 }, expiry);
-  paint(buffer, { x: 0.14, y: 0.17, width: 0.28, height: 0.29 }, sensing);
+  paint(buffer, { x: 0.55, y: 0.08, width: 0.26, height: 0.17 }, reference, card, width);
+  paint(buffer, { x: 0.53, y: 0.38, width: 0.28, height: 0.30 }, expiry, card, width);
+  paint(buffer, { x: 0.14, y: 0.17, width: 0.28, height: 0.29 }, sensing, card, width);
   return { name, image: { cols: width, rows: height, channels: 3, buffer }, expected: { sensing, expiry, reference } };
 }
 

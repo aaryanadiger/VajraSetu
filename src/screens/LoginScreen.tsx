@@ -1,6 +1,7 @@
+import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useState } from 'react';
 import {
-  Image, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView,
+  Image, KeyboardAvoidingView, Platform,  ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -84,7 +85,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   background: { flex: 1 },
   keyboard: { flex: 1 },
-  content: { flexGrow: 1, justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 48, paddingBottom: 28 },
+  content: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 24, flexGrow: 1, justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 48, paddingBottom: 28 },
   brand: { alignItems: 'center' },
   logoLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logoMark: { width: 46, height: 46 },
