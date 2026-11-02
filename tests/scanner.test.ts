@@ -41,6 +41,30 @@ test('the reported empty camera screenshot cannot trigger a scan or lighting war
     (error: unknown) => error instanceof CaptureError && error.problem === 'card_not_in_frame');
 });
 
+for (const [name, red, green, blue] of [
+  ['actual camera lighting', 1, 1, 1], ['warmer camera white balance', 1.05, 1, 0.9],
+  ['cooler camera white balance', 0.9, 1, 1.08],
+] as const) {
+  test(`recognises the reported live failure under ${name}`, () => {
+    // Camera-only crop: exclude the app's controls, which never enter native JPEGs.
+    const original = readFileSync(new URL('./fixtures/live-band-close.bgr', import.meta.url));
+    const buffer = Uint8Array.from(original, (value, index) => Math.min(255,
+      Math.round(value * [blue, green, red][index % 3])));
+    const result = extractRegionsFromDecodedImage({ cols: 184, rows: 195, channels: 3, buffer });
+    near(result.sensingRGB.r, 122 * red, 10);
+    near(result.sensingRGB.g, 128 * green, 10);
+    near(result.expiryRGB.r, 171 * red, 10);
+    assert.ok(result.detection && result.detection.x > 0.4 && result.detection.x < 0.55);
+  });
+}
+
+for (const sensing of [{ r: 100, g: 170, b: 220 }, { r: 90, g: 130, b: 210 }]) {
+  test(`recognises a blue CuSO4 pad with blue channel ${sensing.b}`, () => {
+    const result = extractRegionsFromDecodedImage(makeScannerSample('blue pad', sensing).image);
+    near(result.sensingRGB.r, sensing.r); near(result.sensingRGB.b, sensing.b);
+  });
+}
+
 for (const [name, left, top, width, height] of [
   ['left', 90, 210, 35, 130], ['middle', 130, 205, 35, 125], ['right', 182, 155, 50, 115],
 ] as const) {

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { advanceAutoCapture, emptyAutoCapture } from '../src/services/autoCapture';
 import type { CaptureRegions } from '../src/services/imageProcessing';
+import { extractRegionsFromDecodedImage } from '../src/services/imageProcessing';
+import { readFileSync } from 'node:fs';
 
 const frame: CaptureRegions = {
   sensingRGB: { r: 147, g: 164, b: 161 }, expiryRGB: { r: 167, g: 117, b: 35 },
@@ -36,4 +38,13 @@ test('stale observations cannot trigger a scan on returning to the camera', () =
   const first = advanceAutoCapture(emptyAutoCapture(), frame, 100);
   const later = advanceAutoCapture(first.state, frame, 10000);
   assert.equal(later.ready, false); assert.equal(later.state.frames.length, 1);
+});
+
+test('the previously failing live camera image reaches automatic capture', () => {
+  const regions = extractRegionsFromDecodedImage({ cols: 184, rows: 195, channels: 3,
+    buffer: new Uint8Array(readFileSync(new URL('./fixtures/live-band-close.bgr', import.meta.url))) });
+  let observation = advanceAutoCapture(emptyAutoCapture(), regions, 100);
+  observation = advanceAutoCapture(observation.state, regions, 650);
+  observation = advanceAutoCapture(observation.state, regions, 1200);
+  assert.equal(observation.ready, true);
 });

@@ -16,43 +16,79 @@ export function detectPhysicalBand(source: DecodedImage): CaptureRegions | undef
   const stride = Math.max(1, Math.ceil(Math.max(source.cols, source.rows) / 400));
   const cols = Math.ceil(source.cols / stride), rows = Math.ceil(source.rows / stride);
   const pixels: RGB[] = [];
-  const masks = Array.from({ length: 4 }, () => new Uint8Array(cols * rows));
+  const masks = Array.from({ length: 5 }, () => new Uint8Array(cols * rows));
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
     const i = (Math.min(y * stride, source.rows - 1) * source.cols + Math.min(x * stride, source.cols - 1)) * source.channels;
     const p = { b: source.buffer[i], g: source.buffer[i + 1], r: source.buffer[i + 2] };
-    const index = y * cols + x; pixels.push(p);
+    pixels.push(p);
+  }
+  // Estimate the frame's illuminant from bright neutral backing before colour
+  // segmentation. Keep raw RGB for the exposure pipeline and recorded result.
+  const neutralSamples = pixels.filter((p, index) => index % 16 === 0 && brightness(p) > 80
+    && chroma(p) < Math.min(65, brightness(p) * 0.25)).sort((a, b) => brightness(a) - brightness(b));
+  const brightest = neutralSamples.slice(Math.floor(neutralSamples.length * 0.75));
+  const white = brightest.length ? { r: median(brightest.map(p => p.r)),
+    g: median(brightest.map(p => p.g)), b: median(brightest.map(p => p.b)) } : { r: 200, g: 200, b: 200 };
+  const target = brightness(white);
+  const gain = { r: Math.max(0.75, Math.min(1.3, target / white.r)),
+    g: Math.max(0.75, Math.min(1.3, target / white.g)), b: Math.max(0.75, Math.min(1.3, target / white.b)) };
+  for (let index = 0; index < pixels.length; index++) {
+    const raw = pixels[index];
+    const p = { r: raw.r * gain.r, g: raw.g * gain.g, b: raw.b * gain.b };
     // Yellow/orange/brown expiry dot; no requirement that it be chemically valid.
     if (p.r > 75 && p.g > p.r * 0.52 && Math.min(p.r, p.g) - p.b > 15) masks[0][index] = 1;
-    const green = p.g > p.r + 4 && p.g >= p.b - 10;
+    // Textured CuSO4 can be only slightly greener than red under warm light;
+    // it can also be genuinely blue/cyan. Do not split it at a 4-point boundary.
+    const green = p.g > p.r - 3 && p.g >= p.b - 10 && chroma(p) > Math.max(8, brightness(p) * 0.07);
+    const blue = p.b > p.r + 6 && p.b > p.g + 2;
     const brown = p.r > p.g + 5 && p.r > p.b + 8 && p.r < 190;
+    const scaleBrown = Math.max(p.g, p.b) < p.r * 0.9 && p.r > p.b + 10 && chroma(p) > 18;
+    const scaleBlue = p.b > p.r + Math.max(6, brightness(p) * 0.08) && p.b > p.g + 2;
     const dark = brightness(p) < 80;
-    if (green) masks[1][index] = 1;
+    if (green || blue) masks[1][index] = 1;
     if (brown || dark) masks[3][index] = 1;
+    // Generic chroma connected the entire warm paper to the printed scale.
+    // Separate blue/brown families instead of classifying cream paper as ink.
+    if (scaleBlue || scaleBrown) masks[4][index] = 1;
+    // Retain a second proposal path for lightly printed, desaturated scales.
+    // Both paths still require the blue/brown sequence and band geometry.
     if (chroma(p) > 12) masks[2][index] = 1;
   }
+  masks[1] = closeSmallGaps(masks[1], cols, rows);
   const blobs = masks.map(mask => components(mask, cols, rows));
   const dots = blobs[0].filter(b => compact(b) && b.pixels.length >= 8 && b.pixels.length < cols * rows * 0.15);
   const pads = [...blobs[1], ...blobs[3]].filter(b => compact(b) && b.pixels.length >= 12 && b.pixels.length < cols * rows * 0.3);
   // Printed scales can separate into blue and brown components where their
   // middle is desaturated. Join aligned neighbours across that short gap.
-  const scaleParts = [...blobs[2]];
-  for (let i = 0; i < blobs[2].length; i++) for (let j = i + 1; j < blobs[2].length; j++) {
-    const a = blobs[2][i], b = blobs[2][j];
+  const scaleParts = [...blobs[2], ...blobs[4]];
+  for (const parts of [blobs[2], blobs[4]]) {
+  for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+    const a = parts[i], b = parts[j];
     const ac = centre(a), bc = centre(b);
     const shapeA = orientedShape(a, cols), shapeB = orientedShape(b, cols);
     const axis = shapeA.length / shapeA.width >= shapeB.length / shapeB.width ? shapeA : shapeB;
     const along = Math.abs((bc.x - ac.x) * Math.cos(axis.angle) + (bc.y - ac.y) * Math.sin(axis.angle));
     const across = Math.abs(-(bc.x - ac.x) * Math.sin(axis.angle) + (bc.y - ac.y) * Math.cos(axis.angle));
-    if (across < Math.min(shapeA.width, shapeB.width) * 0.8
-      && along < (shapeA.length + shapeB.length) / 2 + Math.max(shapeA.width, shapeB.width) * 1.4) scaleParts.push({ left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
+    const verticalGap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+    const horizontalGap = Math.max(a.left, b.left) - Math.min(a.right, b.right);
+    // A short visible end of a scale can be wider than it is long. Its own
+    // principal axis then points sideways; align the two end centres as well.
+    const vertical = Math.abs(ac.x - bc.x) < Math.min(a.right - a.left + 1, b.right - b.left + 1) * 0.6
+      && verticalGap >= 0 && verticalGap < Math.max(a.right - a.left + 1, b.right - b.left + 1) * 1.5;
+    const horizontal = Math.abs(ac.y - bc.y) < Math.min(a.bottom - a.top + 1, b.bottom - b.top + 1) * 0.6
+      && horizontalGap >= 0 && horizontalGap < Math.max(a.bottom - a.top + 1, b.bottom - b.top + 1) * 1.5;
+    if (vertical || horizontal || (across < Math.min(shapeA.width, shapeB.width) * 0.8
+      && along < (shapeA.length + shapeB.length) / 2 + Math.max(shapeA.width, shapeB.width) * 1.4)) scaleParts.push({ left: Math.min(a.left, b.left), top: Math.min(a.top, b.top),
       right: Math.max(a.right, b.right), bottom: Math.max(a.bottom, b.bottom), pixels: [...a.pixels, ...b.pixels] });
+  }
   }
   const scales = scaleParts.filter(b => {
     const shape = orientedShape(b, cols);
     const ratio = shape.length / shape.width;
     if (ratio < 1.5 || ratio > 7 || b.pixels.length < 20) return false;
-    const blue = b.pixels.filter(i => pixels[i].b > pixels[i].r + 8).length;
-    const brown = b.pixels.filter(i => pixels[i].r > pixels[i].g + 4 && pixels[i].r > pixels[i].b + 8).length;
+    const blue = b.pixels.filter(i => pixels[i].b * gain.b > pixels[i].r * gain.r + 8).length;
+    const brown = b.pixels.filter(i => pixels[i].r * gain.r > pixels[i].g * gain.g + 4
+      && pixels[i].r * gain.r > pixels[i].b * gain.b + 8).length;
     return blue / b.pixels.length > 0.12 && brown / b.pixels.length > 0.12;
   });
   let best: { score: number; dot: Blob; pad: Blob; scale: Blob } | undefined;
@@ -76,7 +112,7 @@ export function detectPhysicalBand(source: DecodedImage): CaptureRegions | undef
       const colour = sample(pad, pixels, cols);
       const greenBonus = colour.g > colour.r + 4 && colour.g >= colour.b - 10 ? 0.3 : 0;
       // Prefer the dot/scale belonging to this band over a neighbouring band.
-      const score = centred + greenBonus + Math.min(padSize / 80, 0.25)
+      const score = centred * 2 + greenBonus + Math.min(padSize / 80, 0.25)
         - Math.abs(d / padSize - 1.3) * 0.12 - fromPad / padSize * 0.03;
       if (!best || score > best.score) best = { score, dot, pad, scale };
     }
@@ -107,6 +143,25 @@ export function detectPhysicalBand(source: DecodedImage): CaptureRegions | undef
     detection: { x: pc.x / cols, y: pc.y / rows, size: side(pad) / Math.min(cols, rows),
       rotation: (Math.atan2(pc.y - dc.y, pc.x - dc.x) * 180 / Math.PI + 360) % 360 },
   };
+}
+
+function closeSmallGaps(mask: Uint8Array, cols: number, rows: number) {
+  const expanded = new Uint8Array(mask.length), closed = mask.slice();
+  for (let y = 1; y < rows - 1; y++) for (let x = 1; x < cols - 1; x++) {
+    const i = y * cols + x;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (mask[i + dy * cols + dx]) expanded[i] = 1;
+    }
+  }
+  for (let y = 2; y < rows - 2; y++) for (let x = 2; x < cols - 2; x++) {
+    const i = y * cols + x;
+    let filled = true;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!expanded[i + dy * cols + dx]) filled = false;
+    }
+    if (filled) closed[i] = 1;
+  }
+  return closed;
 }
 
 function compact(b: Blob) {

@@ -102,3 +102,9 @@ Run the following on each intended device. Record the result, image, card batch,
 - Raw capture files stored under an approved data-retention policy, not in git.
 - Alignment pass/retry time and operator feedback.
 - Error matrix, confidence/uncertainty analysis, and approval/sign-off record.
+
+### Live camera segmentation regression
+
+The close-up camera failure on 2 November exposed two gaps: the textured green pad fragmented at the previous RGB threshold, and a generic chroma mask joined warm backing paper to the printed scale. Segmentation now estimates a bounded illuminant correction from bright backing, accepts both blue/cyan and green sensing pads, closes small gaps in the sensing mask, and uses separate blue/brown scale proposals alongside the existing desaturated-scale proposals. Short scale ends can be joined by their centre alignment even when their individual principal axes point sideways. Raw sampled RGB and the chemical calibration are unchanged.
+
+`live-band-close.bgr` is the 184×195 camera-only crop of that failure screenshot, excluding app controls. Tests cover the actual image, modest warm/cool colour casts, blue sensing pads and automatic-capture readiness, alongside the earlier positive and negative fixtures.
